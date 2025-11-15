@@ -497,7 +497,7 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                           ),
                         ] else if (_scamStage == ScamFlowStage.choice) ...[
                           const Text(
-                            'Do you want to call your safety contact?',
+                            'Do you want to add your security contact to this call?',
                             style: TextStyle(color: Colors.white, fontSize: 14),
                           ),
                           const SizedBox(height: 16),
@@ -507,8 +507,8 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                               onPressed: () {
                                 widget.onCallSafetyContact?.call();
                               },
-                              icon: const Icon(Icons.contact_phone),
-                              label: const Text('Call Safety Contact'),
+                              icon: const Icon(Icons.person_add),
+                              label: const Text('Add Security Contact'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blue[700],
                                 foregroundColor: Colors.white,

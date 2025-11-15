@@ -107,9 +107,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Create CallInfo for the incoming call
           // Try to fetch the latest caller number from the data endpoint
-          final fetchedFrom = await _backendService
-              .getCurrentFromNumber()
-              .catchError((_) => null);
+          final fetchedFrom =
+              await _backendService.getCurrentFromNumber().catchError((_) => null);
 
           final callInfo = CallInfo(
             id: roomId,
@@ -238,20 +237,41 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
 
       case CallStatus.answered:
-        // Show ongoing call overlay IMMEDIATELY
-        // App should already be in foreground from twilio_call_service
-        if (mounted) {
-          CallOverlayManager.showOngoingCall(
-            context: context,
-            callInfo: currentCall,
-            onHangup: () {
+        // Show ongoing call overlay
+        CallOverlayManager.showOngoingCall(
+          context: context,
+          callInfo: currentCall,
+          onHangup: () {
             callProvider.declineCall();
             // Refetch reminders after hanging up
             _fetchReminders();
           },
-            // TODO: Add mute/speaker callbacks when implemented
-          );
-        }
+          onMute: () => callProvider.toggleMute(!currentCall.isMuted),
+          onSpeaker: () => callProvider.toggleSpeaker(!currentCall.isSpeakerOn),
+          onCallSafetyContact: () async {
+            // Add security contact to the call
+            final success = await _backendService.addSecurityContactToCall();
+            if (success && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Security contact has been added to the call'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            } else if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Failed to add security contact'),
+                  backgroundColor: Colors.red,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            }
+          },
+          isMuted: currentCall.isMuted,
+          isSpeakerOn: currentCall.isSpeakerOn,
+        );
         break;
 
       case CallStatus.declined:

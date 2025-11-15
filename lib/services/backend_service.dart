@@ -597,4 +597,24 @@ class BackendService {
       return false;
     }
   }
+
+  /// Add security contact to the active call
+  /// This sends a POST request to /add endpoint to add the trusted person to the call
+  Future<bool> addSecurityContactToCall() async {
+    try {
+      print('Adding security contact to call...');
+      final response = await _dio.post('/add');
+      
+      if (response.statusCode == 200) {
+        print('Security contact added successfully');
+        return true;
+      } else {
+        print('Failed to add security contact: Status ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Error adding security contact to call: $e');
+      return false;
+    }
+  }
 }

@@ -611,6 +611,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       },
+      onCallSafetyContact: () {
+        _showSnackBar('Security contact would be added to the call (test mode)');
+      },
     );
   }
 
@@ -633,6 +636,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       callInfo: testCallInfo,
       onHangup: () {
         callProvider.declineCall();
+      },
+      onCallSafetyContact: () {
+        _showSnackBar('Security contact would be added to the call (test mode)');
       },
       isMuted: false,
       isSpeakerOn: false,

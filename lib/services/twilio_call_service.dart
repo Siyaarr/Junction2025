@@ -417,7 +417,7 @@ class TwilioCallService {
     });
 
     // Start analyzing call for scam
-    // _analyzeCallForScam(callInfo);
+    _analyzeCallForScam(callInfo);
   }
 
   /// Handle call connected (answered)
@@ -473,7 +473,7 @@ class TwilioCallService {
       // No delay - we want the overlay to appear instantly
       _bringAppToForeground();
 
-      // _startScamCheckTimer();
+      _startScamCheckTimer();
     }
   }
 
@@ -1139,27 +1139,55 @@ class TwilioCallService {
     }
   }
 
-  /// Toggle speaker on/off during active call
-  Future<void> toggleSpeaker(bool enable) async {
+  /// Toggle mute status
+  Future<void> toggleMute(bool mute) async {
     try {
-      print('Toggling speaker: ${enable ? "ON" : "OFF"}');
-      await TwilioVoice.instance.call.toggleSpeaker(enable);
-      print('Speaker toggled successfully');
+      await TwilioVoice.instance.call.toggleMute(mute);
+      print('Call ${mute ? "muted" : "unmuted"}');
+
+      // Update current call info
+      if (_currentCall != null) {
+        _currentCall = CallInfo(
+          id: _currentCall!.id,
+          phoneNumber: _currentCall!.phoneNumber,
+          contactName: _currentCall!.contactName,
+          timestamp: _currentCall!.timestamp,
+          type: _currentCall!.type,
+          status: _currentCall!.status,
+          isScam: _currentCall!.isScam,
+          isMuted: mute,
+          isSpeakerOn: _currentCall!.isSpeakerOn,
+        );
+        _callController.add(_currentCall!);
+      }
     } catch (e) {
-      print('Error toggling speaker: $e');
-      // Don't throw - speaker control failure shouldn't crash the call
+      print('Error toggling mute: $e');
     }
   }
 
-  /// Mute/unmute microphone during active call
-  Future<void> toggleMute(bool mute) async {
+  /// Toggle speaker status
+  Future<void> toggleSpeaker(bool speaker) async {
     try {
-      print('Toggling mute: ${mute ? "MUTED" : "UNMUTED"}');
-      await TwilioVoice.instance.call.toggleMute(mute);
-      print('Mute toggled successfully');
+      await TwilioVoice.instance.call.toggleSpeaker(speaker);
+      print('Speaker turned ${speaker ? "on" : "off"}');
+
+      // Update current call info
+      if (_currentCall != null) {
+        _currentCall = CallInfo(
+          id: _currentCall!.id,
+          phoneNumber: _currentCall!.phoneNumber,
+          contactName: _currentCall!.contactName,
+          timestamp: _currentCall!.timestamp,
+          type: _currentCall!.type,
+          status: _currentCall!.status,
+          isScam: _currentCall!.isScam,
+          isMuted: _currentCall!.isMuted,
+          isSpeakerOn: speaker,
+        );
+        _callController.add(_currentCall!);
+      }
     } catch (e) {
-      print('Error toggling mute: $e');
-      // Don't throw - mute control failure shouldn't crash the call
+      print('Error toggling speaker: $e');
     }
   }
 
