@@ -339,20 +339,23 @@ class TwilioCallService {
     final effectiveContactName = (callerName.isNotEmpty && callerName != from)
         ? callerName
         : (from.isNotEmpty ? from : null);
-    
+
     // If we don't have a number yet, fetch it immediately before creating CallInfo
     // This ensures we show the actual number right away
     if (from.isEmpty) {
       // Fetch the number synchronously if possible, or at least start the fetch
       _backendService.getCurrentFromNumber().then((fromNumber) {
-        if (fromNumber != null && fromNumber.isNotEmpty && _currentCall != null) {
+        if (fromNumber != null &&
+            fromNumber.isNotEmpty &&
+            _currentCall != null) {
           // Use phone number as contact name if no name is available
-          final effectiveContactName = (_currentCall!.contactName != null && 
-              _currentCall!.contactName!.isNotEmpty &&
-              _currentCall!.contactName != _currentCall!.phoneNumber)
+          final effectiveContactName =
+              (_currentCall!.contactName != null &&
+                  _currentCall!.contactName!.isNotEmpty &&
+                  _currentCall!.contactName != _currentCall!.phoneNumber)
               ? _currentCall!.contactName
               : fromNumber;
-          
+
           _currentCall = CallInfo(
             id: _currentCall!.id,
             phoneNumber: fromNumber,
@@ -366,12 +369,14 @@ class TwilioCallService {
         }
       });
     }
-    
+
     final callInfo = CallInfo(
       id: callSid.isNotEmpty
           ? callSid
           : DateTime.now().millisecondsSinceEpoch.toString(),
-      phoneNumber: from.isNotEmpty ? from : '', // Empty string, will be updated by fetch
+      phoneNumber: from.isNotEmpty
+          ? from
+          : '', // Empty string, will be updated by fetch
       contactName: effectiveContactName,
       timestamp: DateTime.now(),
       type: CallType.incoming,
@@ -394,12 +399,13 @@ class TwilioCallService {
             _currentCall!.id == callInfo.id &&
             _currentCall!.phoneNumber != fromNumber) {
           // Use phone number as contact name if no name is available
-          final effectiveContactName = (_currentCall!.contactName != null && 
-              _currentCall!.contactName!.isNotEmpty &&
-              _currentCall!.contactName != _currentCall!.phoneNumber)
+          final effectiveContactName =
+              (_currentCall!.contactName != null &&
+                  _currentCall!.contactName!.isNotEmpty &&
+                  _currentCall!.contactName != _currentCall!.phoneNumber)
               ? _currentCall!.contactName
               : fromNumber;
-          
+
           _currentCall = CallInfo(
             id: _currentCall!.id,
             phoneNumber: fromNumber,
@@ -416,8 +422,8 @@ class TwilioCallService {
       }
     });
 
-    // Start analyzing call for scam
-    // _analyzeCallForScam(callInfo);
+    // Start analyzing call for scam (initial check)
+    _analyzeCallForScam(callInfo);
   }
 
   /// Handle call connected (answered)
@@ -437,12 +443,13 @@ class TwilioCallService {
               _currentCall!.status == CallStatus.answered &&
               _currentCall!.phoneNumber != fromNumber) {
             // Use phone number as contact name if no name is available
-            final effectiveContactName = (_currentCall!.contactName != null && 
-                _currentCall!.contactName!.isNotEmpty &&
-                _currentCall!.contactName != _currentCall!.phoneNumber)
+            final effectiveContactName =
+                (_currentCall!.contactName != null &&
+                    _currentCall!.contactName!.isNotEmpty &&
+                    _currentCall!.contactName != _currentCall!.phoneNumber)
                 ? _currentCall!.contactName
                 : fromNumber;
-            
+
             _currentCall = CallInfo(
               id: _currentCall!.id,
               phoneNumber: fromNumber,
@@ -473,7 +480,8 @@ class TwilioCallService {
       // No delay - we want the overlay to appear instantly
       _bringAppToForeground();
 
-      // _startScamCheckTimer();
+      // Start periodic scam detection polling (every 5 seconds)
+      _startScamCheckTimer();
     }
   }
 
@@ -510,18 +518,24 @@ class TwilioCallService {
       );
 
       _callController.add(_currentCall!);
-      // _stopScamCheckTimer();
+      _stopScamCheckTimer(); // Stop scam polling when call ends
       _alertService.stopAlert();
       _currentCall = null;
     }
   }
 
-  /// Analyze call for scam detection
+  /// Analyze call for scam detection (initial check when call comes in)
+  /// Note: Backend may not have analyzed the call yet, so this is just an initial check
+  /// The periodic timer will catch scam detection as the backend analyzes the conversation
   Future<void> _analyzeCallForScam(CallInfo callInfo) async {
     try {
+      print('🔍 Initial scam check for call: ${callInfo.id}');
       final isScam = await _backendService.analyzeCallForScam(callInfo);
 
+      print('   Initial scam check result: $isScam');
+
       if (isScam) {
+        print('🚨 SCAM detected in initial check!');
         _currentCall = CallInfo(
           id: callInfo.id,
           phoneNumber: callInfo.phoneNumber,
@@ -535,50 +549,104 @@ class TwilioCallService {
         _callController.add(_currentCall!);
         _scamAlertController.add(true);
         await _alertService.triggerScamAlert();
+      } else {
+        print(
+          '✅ Initial check: No scam detected (backend may still be analyzing)',
+        );
       }
     } catch (e) {
-      print('Error analyzing call: $e');
+      print('⚠️  Error in initial scam analysis: $e');
+      // Don't throw - initial check failure shouldn't block the call
     }
   }
 
   /// Start periodic scam check during active call
+  /// Polls /data endpoint every 5 seconds to check for scam detection updates
   void _startScamCheckTimer() {
     _stopScamCheckTimer();
 
+    print('🔍 Starting scam detection polling (every 5 seconds)');
     _scamCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (_currentCall != null && _currentCall!.status == CallStatus.answered) {
-        final scamStatus = await _backendService.checkScamStatus(
-          _currentCall!.id,
-        );
+      // Safety check: stop timer if no active call
+      if (_currentCall == null) {
+        print('⚠️  No active call - stopping scam check timer');
+        timer.cancel();
+        _scamCheckTimer = null;
+        return;
+      }
 
-        if (scamStatus == true && _currentCall!.isScam != true) {
-          _currentCall = CallInfo(
-            id: _currentCall!.id,
-            phoneNumber: _currentCall!.phoneNumber,
-            contactName: _currentCall!.contactName,
-            timestamp: _currentCall!.timestamp,
-            type: _currentCall!.type,
-            status: _currentCall!.status,
-            isScam: true,
+      // Only check scam status for answered calls
+      if (_currentCall!.status == CallStatus.answered) {
+        try {
+          print('🔍 Checking scam status for call: ${_currentCall!.id}');
+          final scamStatus = await _backendService.checkScamStatus(
+            _currentCall!.id,
           );
 
-          _callController.add(_currentCall!);
-          _scamAlertController.add(true);
+          print(
+            '   Scam status result: $scamStatus (current isScam: ${_currentCall!.isScam})',
+          );
 
-          // Trigger visual/audio alert on device
-          await _alertService.triggerScamAlert();
+          // Only update if scam is detected AND we haven't already marked it as scam
+          if (scamStatus == true && _currentCall!.isScam != true) {
+            print(
+              '🚨 SCAM DETECTED! Updating call status and triggering alerts...',
+            );
 
-          // Request backend to inject warning message into the call
-          await _triggerCallWarning();
+            _currentCall = CallInfo(
+              id: _currentCall!.id,
+              phoneNumber: _currentCall!.phoneNumber,
+              contactName: _currentCall!.contactName,
+              timestamp: _currentCall!.timestamp,
+              type: _currentCall!.type,
+              status: _currentCall!.status,
+              isScam: true,
+            );
+
+            _callController.add(_currentCall!);
+            _scamAlertController.add(true);
+
+            // Trigger visual/audio alert on device
+            await _alertService.triggerScamAlert();
+
+            // Request backend to inject warning message into the call
+            await _triggerCallWarning();
+          } else if (scamStatus == false && _currentCall!.isScam == true) {
+            // Scam status cleared (shouldn't happen often, but handle it)
+            print('✅ Scam status cleared - call is no longer marked as scam');
+            _currentCall = CallInfo(
+              id: _currentCall!.id,
+              phoneNumber: _currentCall!.phoneNumber,
+              contactName: _currentCall!.contactName,
+              timestamp: _currentCall!.timestamp,
+              type: _currentCall!.type,
+              status: _currentCall!.status,
+              isScam: false,
+            );
+            _callController.add(_currentCall!);
+          }
+        } catch (e) {
+          print('⚠️  Error checking scam status: $e');
+          // Don't stop timer on error - continue polling
         }
+      } else {
+        // Call is not answered - stop polling
+        print(
+          '⚠️  Call status is not answered (${_currentCall!.status}) - stopping scam check timer',
+        );
+        timer.cancel();
+        _scamCheckTimer = null;
       }
     });
   }
 
   /// Stop scam check timer
   void _stopScamCheckTimer() {
-    _scamCheckTimer?.cancel();
-    _scamCheckTimer = null;
+    if (_scamCheckTimer != null) {
+      print('🛑 Stopping scam detection polling');
+      _scamCheckTimer!.cancel();
+      _scamCheckTimer = null;
+    }
   }
 
   /// Trigger warning message injection into the active call
@@ -590,20 +658,48 @@ class TwilioCallService {
     }
 
     try {
+      // Try to get the actual Twilio call SID from the SDK
+      String? callSid;
+      try {
+        callSid = await TwilioVoice.instance.call.getSid();
+        print('📞 Got call SID from SDK: $callSid');
+      } catch (e) {
+        print('⚠️  Could not get call SID from SDK: $e');
+        // Fall back to extracting from conference name if it's in "room-CA..." format
+        if (_currentCall!.id.startsWith('room-')) {
+          callSid = _currentCall!.id.replaceFirst('room-', '');
+          print('📞 Extracted call SID from conference name: $callSid');
+        } else {
+          callSid = _currentCall!.id;
+          print('📞 Using call ID as-is: $callSid');
+        }
+      }
+
+      if (callSid == null || callSid.isEmpty) {
+        print('⚠️  Cannot trigger warning: no valid call SID available');
+        return;
+      }
+
       final success = await _backendService.triggerScamWarning(
-        _currentCall!.id,
+        callSid,
         warningMessage:
             'Warning: This call has been flagged as potentially suspicious. '
             'Please be cautious and do not share personal information.',
       );
 
       if (success) {
-        print('Scam warning injected into call successfully');
+        print('✅ Scam warning injected into call successfully');
       } else {
-        print('Failed to inject scam warning into call');
+        print(
+          '⚠️  Failed to inject scam warning into call (but warning was shown to user)',
+        );
       }
     } catch (e) {
-      print('Error triggering call warning: $e');
+      print('⚠️  Error triggering call warning: $e');
+      print(
+        '   Note: Scam was detected and shown to user, but warning could not be injected into call',
+      );
+      // Don't throw - warning injection failure shouldn't affect scam detection
     }
   }
 
@@ -937,11 +1033,12 @@ class TwilioCallService {
           } catch (e) {
             print('Error fetching from_number for room call: $e');
           }
-          
+
           final callInfo = CallInfo(
             id: roomId,
             phoneNumber: fetchedFrom ?? 'Incoming Call',
-            contactName: fetchedFrom, // Use phone number as contact name if no name available
+            contactName:
+                fetchedFrom, // Use phone number as contact name if no name available
             timestamp: DateTime.now(),
             type: CallType.incoming,
             status: CallStatus.answered, // Mark as answered so UI updates
@@ -1031,11 +1128,12 @@ class TwilioCallService {
           } catch (e) {
             print('Error fetching from_number for room call fallback: $e');
           }
-          
+
           final callInfo = CallInfo(
             id: roomId,
             phoneNumber: fetchedFrom ?? 'Incoming Call',
-            contactName: fetchedFrom, // Use phone number as contact name if no name available
+            contactName:
+                fetchedFrom, // Use phone number as contact name if no name available
             timestamp: DateTime.now(),
             type: CallType.incoming,
             status: CallStatus.answered,
@@ -1113,7 +1211,7 @@ class TwilioCallService {
         );
 
         _callController.add(_currentCall!);
-        // _stopScamCheckTimer();
+        _stopScamCheckTimer(); // Stop scam polling when call is declined
         _alertService.stopAlert();
         _currentCall = null;
       }
@@ -1132,7 +1230,7 @@ class TwilioCallService {
           isScam: _currentCall!.isScam,
         );
         _callController.add(_currentCall!);
-        // _stopScamCheckTimer();
+        _stopScamCheckTimer(); // Stop scam polling when call is declined (error path)
         _alertService.stopAlert();
         _currentCall = null;
       }
