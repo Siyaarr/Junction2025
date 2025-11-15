@@ -508,7 +508,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
 
-                    // "You're Protected" section at the top
+                    // "You Are Protected" section at the top
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         24.0,
@@ -540,7 +540,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               );
                             },
                             child: const Text(
-                              'You\'re Protected',
+                              'You Are Protected',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,

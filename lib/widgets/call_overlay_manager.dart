@@ -131,8 +131,40 @@ class CallOverlayManager {
         hideOverlay(); // Remove old overlay
         // Continue to create new overlay below
       } else {
-        // Same callInfo - just mark for rebuild (though widget should handle updates via didUpdateWidget)
-        _overlayEntry!.markNeedsBuild();
+        // Same callInfo - but we still need to ensure overlay is on top
+        // Remove and reinsert to bring it to the front (important when app comes back to foreground)
+        final previousEntry = _overlayEntry!;
+        final overlayState = _overlayState;
+        
+        // Create new overlay entry with updated callInfo
+        _overlayEntry = OverlayEntry(
+          opaque: true,
+          builder: (context) => OngoingCallOverlay(
+            callInfo: callInfo,
+            onHangup: () {
+              onHangup();
+              hideOverlay();
+            },
+            onMute: onMute,
+            onSpeaker: onSpeaker,
+            onHold: onHold,
+            onResume: onResume,
+            onCallSafetyContact: onCallSafetyContact,
+            isMuted: isMuted,
+            isSpeakerOn: isSpeakerOn,
+            isOnHold: isOnHold,
+          ),
+        );
+        
+        // Remove old and insert new to bring to top
+        previousEntry.remove();
+        overlayState?.insert(_overlayEntry!);
+        _lastCallInfo = callInfo; // Update stored callInfo
+        
+        // Ensure system UI mode is set
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        
+        print('✅ Ongoing call overlay brought to top');
         return;
       }
     }
