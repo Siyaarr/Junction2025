@@ -181,7 +181,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[900],
       appBar: AppBar(
-        title: const Text('hello'),
+        title: Image.asset(
+          'assets/images/logo.png',
+          height: 28,
+        ),
         backgroundColor: Colors.grey[850],
         elevation: 0,
         actions: [
