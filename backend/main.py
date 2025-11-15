@@ -12,6 +12,7 @@ import audioop
 from dotenv import load_dotenv
 import os
 
+from llm.summarizer import ConversationSummarizer
 from llm.detector import ScamDetector
 from llm.transcriber import DiarizationTranscriber
 
@@ -31,6 +32,7 @@ conference_name = ""
 
 transcriber = DiarizationTranscriber()
 detector = ScamDetector()
+summarizer = ConversationSummarizer()
 
 def save_chunk():
     """Save current buffer as WAV file."""
@@ -230,7 +232,10 @@ def stream(ws):
             save_chunk()  # Save final chunk
             print("Recording stopped")
             print(transcript_buffer)
+            summary = summarizer.summarize(transcript_buffer)
+            print(f"Summary: {summary}")
             break
+
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=80)
