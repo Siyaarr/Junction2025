@@ -25,7 +25,7 @@ class MainApp extends StatelessWidget {
     return MultiProvider(
       providers: [ChangeNotifierProvider(create: (_) => CallProvider())],
       child: MaterialApp(
-        title: 'Anti-Scam Protection',
+        title: 'hello',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
