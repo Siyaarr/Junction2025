@@ -11,8 +11,8 @@ class BackendService {
       _dio = Dio(
         BaseOptions(
           baseUrl: baseUrl ?? 'https://junction.timohartikainen.fi',
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 10),
+          connectTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 30),
           followRedirects: true,
           validateStatus: (status) {
             // Accept status codes 200-399 (including redirects)
@@ -114,19 +114,75 @@ class BackendService {
   /// This should be called when app starts or token expires
   Future<String> getTwilioAccessToken() async {
     try {
-      final response = await _dio.post('/get-access-token');
+      // Use hardcoded user ID for testing
+      const userId = '123';
+      final endpoint = '/get-access-token';
+      final fullUrl = '$baseUrl$endpoint';
+      // Explicitly ensure user_id is a String in the request data
+      final requestData = <String, String>{'user_id': userId};
+
+      print('=== BackendService Debug ===');
+      print('Request Method: POST');
+      print('Full URL: $fullUrl');
+      print('Endpoint: $endpoint');
+      print('Base URL: $baseUrl');
+      print('Request Data: $requestData');
+      print('User ID: $userId (type: ${userId.runtimeType})');
+      print('User ID value type check: ${requestData['user_id'] is String}');
+      print('===========================');
+
+      final response = await _dio.post(endpoint, data: requestData);
+
+      print('TOKEN Response Status: ${response.statusCode}');
+      print('TOKEN Response Data: ${response.data}');
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>;
-        return data['accessToken'] as String;
+        // Backend returns 'access_token' (snake_case), handle both formats
+        final accessToken =
+            data['access_token'] as String? ?? data['accessToken'] as String?;
+
+        if (accessToken == null || accessToken.isEmpty) {
+          throw Exception(
+            'Invalid response: access_token field missing or empty',
+          );
+        }
+
+        return accessToken;
       }
       throw Exception(
         'Failed to get access token: Status ${response.statusCode}',
       );
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) {
+      final endpoint = '/get-access-token';
+      final fullUrl = '$baseUrl$endpoint';
+
+      print('=== DioException Debug ===');
+      print('Exception Type: ${e.type}');
+      print('Failed URL: $fullUrl');
+      print('Base URL: $baseUrl');
+      print('Endpoint: $endpoint');
+      if (e.response != null) {
+        print('Response Status: ${e.response?.statusCode}');
+        print('Response Data: ${e.response?.data}');
+      }
+      print('Error Message: ${e.message}');
+      print('==========================');
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
         throw Exception(
-          'Access token endpoint not found. Please ensure the backend API is deployed.',
+          'Connection timeout. Please check your internet connection and ensure the backend server is running at $fullUrl',
         );
+      } else if (e.response?.statusCode == 404) {
+        throw Exception(
+          'Access token endpoint not found. Please ensure the backend API is deployed at $fullUrl',
+        );
+      } else if (e.response?.statusCode == 400) {
+        final errorMsg = e.response?.data is Map
+            ? (e.response?.data as Map)['error']?.toString() ?? 'Bad request'
+            : 'Bad request';
+        throw Exception('Backend error: $errorMsg');
       } else if (e.response?.statusCode == 302) {
         throw Exception(
           'Backend returned redirect. Please check the API URL configuration.',
