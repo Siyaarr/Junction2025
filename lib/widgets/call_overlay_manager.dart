@@ -125,7 +125,9 @@ class CallOverlayManager {
     // Ensure ringtone is stopped
     AlertService().stopRingtone();
 
+    // Create overlay entry with opaque: true to ensure it's on top
     _overlayEntry = OverlayEntry(
+      opaque: true, // Make overlay opaque to ensure it covers everything
       builder: (context) => OngoingCallOverlay(
         callInfo: callInfo,
         onHangup: () {
@@ -143,10 +145,14 @@ class CallOverlayManager {
       ),
     );
 
+    // Insert overlay at the end to ensure it's on top
     _overlayState?.insert(_overlayEntry!);
 
     // Prevent back button from dismissing overlay
+    // Use immersiveSticky to hide system UI and ensure our overlay is visible
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    print('✅ Ongoing call overlay shown - should appear above Android call UI');
   }
 
   /// Update overlay with scam status
