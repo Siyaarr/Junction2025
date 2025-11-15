@@ -101,8 +101,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Create CallInfo for the incoming call
           // Try to fetch the latest caller number from the data endpoint
-          final fetchedFrom =
-              await _backendService.getCurrentFromNumber().catchError((_) => null);
+          final fetchedFrom = await _backendService
+              .getCurrentFromNumber()
+              .catchError((_) => null);
 
           final callInfo = CallInfo(
             id: roomId,
@@ -188,13 +189,16 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
 
       case CallStatus.answered:
-        // Show ongoing call overlay
-        CallOverlayManager.showOngoingCall(
-          context: context,
-          callInfo: currentCall,
-          onHangup: () => callProvider.declineCall(),
-          // TODO: Add mute/speaker callbacks when implemented
-        );
+        // Show ongoing call overlay IMMEDIATELY
+        // App should already be in foreground from twilio_call_service
+        if (mounted) {
+          CallOverlayManager.showOngoingCall(
+            context: context,
+            callInfo: currentCall,
+            onHangup: () => callProvider.declineCall(),
+            // TODO: Add mute/speaker callbacks when implemented
+          );
+        }
         break;
 
       case CallStatus.declined:

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:twilio_voice/twilio_voice.dart';
 import 'package:twilio_voice/models/call_event.dart';
+import 'package:flutter/services.dart';
 import '../models/call_info.dart';
 import 'backend_service.dart';
 import 'alert_service.dart';
@@ -375,7 +376,7 @@ class TwilioCallService {
     });
 
     // Start analyzing call for scam
-    _analyzeCallForScam(callInfo);
+    // _analyzeCallForScam(callInfo);
   }
 
   /// Handle call connected (answered)
@@ -396,7 +397,28 @@ class TwilioCallService {
       );
 
       _callController.add(_currentCall!);
-      _startScamCheckTimer();
+
+      // Bring app to foreground IMMEDIATELY to ensure our overlay appears above Android's call UI
+      // No delay - we want the overlay to appear instantly
+      _bringAppToForeground();
+
+      // _startScamCheckTimer();
+    }
+  }
+
+  /// Bring app to foreground to ensure custom overlay is shown
+  Future<void> _bringAppToForeground() async {
+    try {
+      const platform = MethodChannel('com.example.junction_flutter_1/app_wake');
+      await platform.invokeMethod('bringToForeground');
+      print(
+        '✅ Brought app to foreground - custom call UI should now be visible',
+      );
+    } catch (e) {
+      print('⚠️  Could not bring app to foreground: $e');
+      print(
+        '   Custom overlay may still work, but Android call UI might appear',
+      );
     }
   }
 
@@ -417,7 +439,7 @@ class TwilioCallService {
       );
 
       _callController.add(_currentCall!);
-      _stopScamCheckTimer();
+      // _stopScamCheckTimer();
       _alertService.stopAlert();
       _currentCall = null;
     }
@@ -758,6 +780,10 @@ class TwilioCallService {
           );
         }
 
+        // Bring app to foreground IMMEDIATELY after call is placed
+        // This ensures our overlay appears before Android's default call UI
+        _bringAppToForeground();
+
         print('${"=" * 60}\n');
 
         // POST-PLACEMENT CHECKS
@@ -1000,7 +1026,7 @@ class TwilioCallService {
         );
 
         _callController.add(_currentCall!);
-        _stopScamCheckTimer();
+        // _stopScamCheckTimer();
         _alertService.stopAlert();
         _currentCall = null;
       }
@@ -1019,7 +1045,7 @@ class TwilioCallService {
           isScam: _currentCall!.isScam,
         );
         _callController.add(_currentCall!);
-        _stopScamCheckTimer();
+        // _stopScamCheckTimer();
         _alertService.stopAlert();
         _currentCall = null;
       }
