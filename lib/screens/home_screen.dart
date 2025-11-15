@@ -104,147 +104,71 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildMainContent() {
     return Consumer<CallProvider>(
       builder: (context, callProvider, child) {
-        if (_isInitializing) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text(
-                  'Initializing Twilio...',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ],
-            ),
-          );
-        }
-
+        // Extract a user-friendly error message
+        String? errorMessage;
         if (_initError != null) {
-          // Extract a user-friendly error message
-          String errorMessage = _initError!;
-          if (errorMessage.contains('endpoint not found') ||
-              errorMessage.contains('404')) {
+          if (_initError!.contains('endpoint not found') ||
+              _initError!.contains('404')) {
             errorMessage =
-                'Backend API endpoint not available yet.\n\n'
-                'The Twilio access token endpoint is being set up.\n'
-                'Please wait for the backend to be deployed.';
-          } else if (errorMessage.contains('redirect') ||
-              errorMessage.contains('302')) {
+                'Backend API endpoint not available yet. '
+                'The Twilio access token endpoint is being set up.';
+          } else if (_initError!.contains('redirect') ||
+              _initError!.contains('302')) {
             errorMessage =
-                'Backend configuration issue.\n\n'
+                'Backend configuration issue. '
                 'The API URL may be incorrect or the server is redirecting.';
-          } else if (errorMessage.contains('Failed to get access token')) {
+          } else if (_initError!.contains('Failed to get access token')) {
             errorMessage =
-                'Unable to connect to backend.\n\n'
+                'Unable to connect to backend. '
                 'Please check your internet connection and ensure the backend is running.';
+          } else {
+            errorMessage =
+                'Initialization error: ${_initError!.split(':').first}';
           }
-
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error, size: 64, color: Colors.red),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Initialization Error',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    errorMessage,
-                    style: const TextStyle(color: Colors.grey),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _initializeApp,
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            ),
-          );
         }
 
         return Column(
           children: [
-            // Status card
-            Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.grey[800],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: _isInitialized ? Colors.green : Colors.orange,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _isInitialized
-                              ? 'Ready to Receive Calls'
-                              : 'Initializing...',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _isInitialized
-                              ? 'Waiting for incoming calls via Twilio'
-                              : 'Please wait...',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Scam alert indicator
-            if (callProvider.isScamAlertActive)
+            // Error banner (non-blocking)
+            if (errorMessage != null)
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                padding: const EdgeInsets.all(16),
+                width: double.infinity,
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red[900],
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.orange[900],
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.white, size: 32),
-                    SizedBox(width: 12),
+                    const Icon(Icons.warning, color: Colors.white, size: 20),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'SCAM ALERT ACTIVE',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                        errorMessage,
+                        style: const TextStyle(
                           color: Colors.white,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: _initializeApp,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Retry',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
@@ -252,35 +176,155 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-            const Spacer(),
+            // Loading indicator (only show if initializing and no error)
+            if (_isInitializing && errorMessage == null)
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Initializing Twilio...',
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
 
-            // Info section
-            Padding(
-              padding: const EdgeInsets.all(24.0),
+            // Main content
+            Expanded(
               child: Column(
                 children: [
-                  const Icon(Icons.phone_in_talk, size: 64, color: Colors.blue),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Ready to receive calls',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  // Status card
+                  Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[800],
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    textAlign: TextAlign.center,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: _isInitialized
+                                ? Colors.green
+                                : (_initError != null
+                                      ? Colors.red
+                                      : Colors.orange),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _isInitialized
+                                    ? 'Ready to Receive Calls'
+                                    : (_initError != null
+                                          ? 'Not Connected'
+                                          : 'Initializing...'),
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _isInitialized
+                                    ? 'Waiting for incoming calls via Twilio'
+                                    : (_initError != null
+                                          ? 'Backend connection failed. Retry to reconnect.'
+                                          : 'Please wait...'),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[400],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Calls will be received via Twilio. The app will alert you if a scam is detected.',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[400]),
-                    textAlign: TextAlign.center,
+
+                  // Scam alert indicator
+                  if (callProvider.isScamAlertActive)
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.red[900],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.warning, color: Colors.white, size: 32),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'SCAM ALERT ACTIVE',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const Spacer(),
+
+                  // Info section
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.phone_in_talk,
+                          size: 64,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Ready to receive calls',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Calls will be received via Twilio. The app will alert you if a scam is detected.',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[400],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
+
+                  const Spacer(),
                 ],
               ),
             ),
-
-            const Spacer(),
           ],
         );
       },
