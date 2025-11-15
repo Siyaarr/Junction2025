@@ -7,6 +7,9 @@ requires-python = ">=3.12"
 dependencies = [
     "flask>=3.1.2",
     "flask-sock>=0.7.0",
+    "langchain>=1.0.7",
+    "langchain-openai>=1.0.3",
+    "openai>=2.8.0",
     "python-dotenv>=1.2.1",
     "twilio>=9.8.6",
 ]

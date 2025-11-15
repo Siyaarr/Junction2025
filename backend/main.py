@@ -10,7 +10,9 @@ import audioop
 from dotenv import load_dotenv
 import os
 
-# Load environment variables from .env file
+from llm.detector import ScamDetector
+from llm.transcriber import DiarizationTranscriber
+
 load_dotenv()
 
 domain = os.getenv('DOMAIN')
@@ -22,10 +24,14 @@ sock = Sock(app)
 audio_buffer = []
 chunk_number = 1
 is_recording = False
+transcript_buffer = ""
+
+transcriber = DiarizationTranscriber()
+detector = ScamDetector()
 
 def save_chunk():
     """Save current buffer as WAV file."""
-    global audio_buffer, chunk_number
+    global audio_buffer, chunk_number, transcript_buffer
     
     if not audio_buffer:
         return
@@ -49,6 +55,18 @@ def save_chunk():
     # Reset
     audio_buffer = []
     chunk_number += 1
+
+    transcript = transcriber.transcribe_with_diarization(filename)
+    print(f"Transcript: {transcript}")
+    transcript_buffer += transcriber.format_transcript(transcript) + "\n"
+
+    result = detector.detect(transcript_buffer)
+    print(f"Scam: {result.is_scam}")
+    print(f"Confidence: {result.confidence:.0%}")
+    print(f"Type: {result.scam_type}")
+    print(f"Risks: {result.risk_factors}")
+    print(f"Reasoning: {result.reasoning}")
+
 
 def timer_worker():
     """Save chunks every 5 seconds."""
@@ -92,7 +110,7 @@ def recording():
 
 @sock.route('/stream')
 def stream(ws):
-    global is_recording
+    global is_recording, transcript_buffer
     
     while True:
         message = ws.receive()
@@ -113,6 +131,7 @@ def stream(ws):
             is_recording = False
             save_chunk()  # Save final chunk
             print("Recording stopped")
+            print(transcript_buffer)
             break
 
 if __name__ == "__main__":
