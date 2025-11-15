@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/call_provider.dart';
 import '../widgets/call_overlay_manager.dart';
 import '../services/backend_service.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -173,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           // Connection status indicator
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
+            padding: const EdgeInsets.only(right: 8.0),
             child: Row(
               children: [
                 Container(
@@ -195,6 +196,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
+          ),
+          // Settings button
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
+            tooltip: 'Settings',
           ),
         ],
       ),
