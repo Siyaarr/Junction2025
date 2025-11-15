@@ -1,16 +1,18 @@
 // import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
 import '../models/call_info.dart';
 
 class BackendService {
   final Dio _dio;
   final String baseUrl;
+  static const String _domain = 'junction.timohartikainen.fi';
 
   BackendService({String? baseUrl})
-    : baseUrl = baseUrl ?? 'https://junction.timohartikainen.fi',
+    : baseUrl = baseUrl ?? 'https://$_domain',
       _dio = Dio(
         BaseOptions(
-          baseUrl: baseUrl ?? 'https://junction.timohartikainen.fi',
+          baseUrl: baseUrl ?? 'https://$_domain',
           connectTimeout: const Duration(seconds: 30),
           receiveTimeout: const Duration(seconds: 30),
           followRedirects: true,
@@ -20,6 +22,101 @@ class BackendService {
           },
         ),
       );
+
+  /// Test DNS resolution for the backend domain
+  /// Returns detailed diagnostic information
+  static Future<Map<String, dynamic>> testBackendDnsResolution() async {
+    final result = <String, dynamic>{
+      'success': false,
+      'addresses': <String>[],
+      'error': null,
+    };
+
+    try {
+      print('Testing DNS resolution for $_domain...');
+      final addresses = await InternetAddress.lookup(_domain);
+      if (addresses.isNotEmpty) {
+        result['success'] = true;
+        result['addresses'] = addresses.map((a) => a.address).toList();
+        print(
+          '✓ DNS resolution successful: ${addresses.map((a) => a.address).join(", ")}',
+        );
+      } else {
+        result['error'] = 'DNS lookup returned no addresses';
+        print('✗ DNS lookup returned no addresses');
+      }
+    } catch (e) {
+      result['error'] = e.toString();
+      print('✗ DNS resolution failed: $e');
+
+      // Provide helpful diagnostics
+      if (e.toString().contains('Failed host lookup') ||
+          e.toString().contains('No address associated with hostname')) {
+        print('');
+        print('DNS Resolution Failed - Troubleshooting Steps:');
+        print('1. Check emulator network settings:');
+        print('   - Settings → Network & internet → Private DNS → Off');
+        print('   - Try setting manual DNS (8.8.8.8) in Wi-Fi settings');
+        print('2. If using VPN on host machine, try disabling it');
+        print('3. Verify domain resolves publicly:');
+        print('   - From host: nslookup $_domain');
+        print('   - From browser in emulator: https://$_domain');
+        print('4. Restart emulator with cold boot');
+        print('');
+      }
+    }
+    return result;
+  }
+
+  /// Test general internet connectivity by making a request to a reliable endpoint
+  /// Returns true if connectivity works, false otherwise
+  static Future<bool> testInternetConnectivity() async {
+    try {
+      print('=== Testing Internet Connectivity ===');
+
+      // Test DNS resolution first
+      print('1. Testing DNS resolution to google.com...');
+      try {
+        final addresses = await InternetAddress.lookup('google.com');
+        print('   ✓ DNS resolution successful: ${addresses.first.address}');
+      } catch (e) {
+        print('   ✗ DNS resolution failed: $e');
+        return false;
+      }
+
+      // Test HTTP request to a reliable endpoint
+      print('2. Testing HTTP request to httpbin.org/get...');
+      final testDio = Dio(
+        BaseOptions(
+          baseUrl: 'https://httpbin.org',
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+
+      try {
+        final response = await testDio.get('/get');
+        if (response.statusCode == 200) {
+          print(
+            '   ✓ HTTP request successful (Status: ${response.statusCode})',
+          );
+          print('   Response origin: ${response.data['origin']}');
+          return true;
+        } else {
+          print('   ✗ HTTP request failed (Status: ${response.statusCode})');
+          return false;
+        }
+      } catch (e) {
+        print('   ✗ HTTP request failed: $e');
+        return false;
+      }
+    } catch (e) {
+      print('Internet connectivity test failed: $e');
+      return false;
+    } finally {
+      print('=====================================');
+    }
+  }
 
   /// Poll /room endpoint to check for incoming calls
   /// Returns room ID if a call is incoming, null if no call
@@ -112,7 +209,42 @@ class BackendService {
 
   /// Get Twilio access token from backend
   /// This should be called when app starts or token expires
+  /// Automatically falls back to IP address if DNS resolution fails
   Future<String> getTwilioAccessToken() async {
+    // First, test general internet connectivity
+    print('=== Pre-flight Connectivity Check ===');
+    final hasInternet = await BackendService.testInternetConnectivity();
+    if (!hasInternet) {
+      throw Exception(
+        'No internet connectivity detected. Please check:\n'
+        '1. Device has internet connection (Wi-Fi or mobile data)\n'
+        '2. Network settings are correct\n'
+        '3. Firewall/VPN is not blocking connections\n'
+        '4. If using emulator, check network adapter settings',
+      );
+    }
+
+    // Test DNS resolution for our specific domain
+    print('=== Testing Backend Domain DNS ===');
+    final dnsResult = await BackendService.testBackendDnsResolution();
+    if (!dnsResult['success']) {
+      throw Exception(
+        'DNS resolution failed for $_domain.\n\n'
+        'The Android emulator cannot resolve your domain name.\n\n'
+        'This is NOT a code issue - it\'s a DNS/network configuration problem.\n\n'
+        'Quick Fixes:\n'
+        '1. Emulator Settings → Network & internet → Private DNS → Off\n'
+        '2. Set manual DNS (8.8.8.8) in emulator Wi-Fi settings\n'
+        '3. Disable VPN on host machine and restart emulator\n'
+        '4. Test in emulator browser: https://$_domain\n'
+        '5. Verify domain resolves publicly: nslookup $_domain\n\n'
+        'Note: IP fallback does NOT work with Cloudflare over HTTPS because\n'
+        'Cloudflare requires SNI (Server Name Indication) in the TLS handshake,\n'
+        'which cannot be set when connecting directly to an IP address.\n\n'
+        'Error: ${dnsResult['error']}',
+      );
+    }
+
     try {
       // Use hardcoded user ID for testing
       const userId = '123';
@@ -166,9 +298,45 @@ class BackendService {
         print('Response Data: ${e.response?.data}');
       }
       print('Error Message: ${e.message}');
+      print('Error: ${e.error}');
       print('==========================');
 
-      if (e.type == DioExceptionType.connectionTimeout ||
+      // Handle DNS resolution failures
+      if (e.type == DioExceptionType.connectionError) {
+        final errorMsg = e.error?.toString() ?? '';
+        if (errorMsg.contains('Failed host lookup') ||
+            errorMsg.contains('No address associated with hostname')) {
+          throw Exception(
+            'DNS resolution failed for $baseUrl. '
+            'Please check:\n'
+            '1. Device has internet connectivity\n'
+            '2. DNS servers are working (try opening a browser)\n'
+            '3. If using emulator, check network settings\n'
+            '4. Firewall/VPN is not blocking DNS\n'
+            'Error: $errorMsg',
+          );
+        }
+        throw Exception(
+          'Connection error: ${e.error?.toString() ?? e.message}. '
+          'Please check your internet connection and network settings.',
+        );
+      } else if (e.type == DioExceptionType.unknown) {
+        final errorMsg = e.error?.toString() ?? '';
+        if (errorMsg.contains('HandshakeException') ||
+            errorMsg.contains('HANDSHAKE_FAILURE')) {
+          throw Exception(
+            'SSL handshake failed. This usually indicates:\n'
+            '1. DNS resolution issue (domain not resolving)\n'
+            '2. Certificate validation problem\n'
+            '3. Network configuration blocking TLS\n\n'
+            'If you see this after DNS resolution succeeded, check:\n'
+            '- Certificate validity\n'
+            '- Network security configuration\n'
+            '- Firewall/VPN settings\n\n'
+            'Error: $errorMsg',
+          );
+        }
+      } else if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.sendTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
         throw Exception(

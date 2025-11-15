@@ -28,15 +28,17 @@ class TwilioCallService {
   /// Initialize Twilio Voice SDK
   /// Call this with access token from backend
   /// deviceToken is optional (for push notifications, not currently used)
+  /// Note: Twilio SDK requires deviceToken to be non-null, so we pass empty string if not provided
   Future<void> initialize({
     required String accessToken,
     String? deviceToken,
   }) async {
     try {
       // Set tokens for Twilio
+      // Twilio SDK requires deviceToken to be non-null, use empty string if not provided
       await TwilioVoice.instance.setTokens(
         accessToken: accessToken,
-        deviceToken: deviceToken,
+        deviceToken: deviceToken ?? '',
       );
 
       // Listen to Twilio call events
