@@ -438,6 +438,50 @@ class BackendService {
     }
   }
 
+  /// Get all conversations from /data endpoint
+  /// Returns a list of conversations with all their metadata
+  Future<List<Map<String, dynamic>>> getConversations() async {
+    try {
+      print('Fetching conversations from /data endpoint...');
+      final response = await _dio.get('/data');
+      print('Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map<String, dynamic>;
+        final conversations = data['conversations'] as List<dynamic>?;
+
+        if (conversations == null) {
+          print('No conversations found in response');
+          return [];
+        }
+
+        print('Found ${conversations.length} conversations in response');
+        final conversationsList = <Map<String, dynamic>>[];
+
+        for (final conversation in conversations) {
+          if (conversation is! Map<String, dynamic>) continue;
+          conversationsList.add(conversation);
+        }
+
+        // Sort by timestamp (most recent first)
+        conversationsList.sort((a, b) {
+          final timeA = DateTime.tryParse(a['timestamp'] as String? ?? '');
+          final timeB = DateTime.tryParse(b['timestamp'] as String? ?? '');
+          if (timeA == null || timeB == null) return 0;
+          return timeB.compareTo(timeA); // Reverse order for newest first
+        });
+
+        print('Returning ${conversationsList.length} conversations');
+        return conversationsList;
+      }
+      print('Invalid response format or status code');
+      return [];
+    } catch (e) {
+      print('Error fetching conversations: $e');
+      return [];
+    }
+  }
+
   /// Get Twilio access token from backend
   /// This should be called when app starts or token expires
   /// Automatically falls back to IP address if DNS resolution fails
