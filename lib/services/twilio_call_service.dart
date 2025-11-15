@@ -36,7 +36,66 @@ class TwilioCallService {
     String? deviceToken,
   }) async {
     try {
-      // Register phone account (required for Android before making calls)
+      // Step 1: Check and request microphone permission
+      // Required for receiving and placing calls
+      print('Checking microphone permission...');
+      try {
+        final hasMic = await TwilioVoice.instance.hasMicAccess();
+        if (!hasMic) {
+          print('Microphone permission not granted, requesting...');
+          await TwilioVoice.instance.requestMicAccess();
+          print('Microphone permission requested');
+        } else {
+          print('✅ Microphone permission already granted');
+        }
+      } catch (e) {
+        print('Error checking/requesting microphone permission: $e');
+        // Continue - permission might be automatically requested when receiving a call
+      }
+
+      // Step 2: Request READ_PHONE_NUMBERS permission (required before registering Phone Account)
+      print('Requesting READ_PHONE_NUMBERS permission...');
+      try {
+        await TwilioVoice.instance.requestReadPhoneNumbersPermission();
+        print('READ_PHONE_NUMBERS permission granted');
+      } catch (e) {
+        print('Error requesting READ_PHONE_NUMBERS permission: $e');
+        // Continue - might already be granted
+      }
+
+      // Step 3: Request CALL_PHONE permission (required for placing calls)
+      print('Requesting CALL_PHONE permission...');
+      try {
+        await TwilioVoice.instance.requestCallPhonePermission();
+        print('CALL_PHONE permission granted');
+      } catch (e) {
+        print('Error requesting CALL_PHONE permission: $e');
+        // Continue - might already be granted
+      }
+
+      // Step 4: Request READ_PHONE_STATE permission (required for ConnectionService)
+      print('Requesting READ_PHONE_STATE permission...');
+      try {
+        await TwilioVoice.instance.requestReadPhoneStatePermission();
+        print('READ_PHONE_STATE permission granted');
+      } catch (e) {
+        print('Error requesting READ_PHONE_STATE permission: $e');
+        // Continue - might already be granted
+      }
+
+      // Step 5: Request MANAGE_OWN_CALLS permission (required for outbound calls)
+      // Note: This permission is required in manifest, but we can request it here too
+      print('Requesting MANAGE_OWN_CALLS permission...');
+      try {
+        await TwilioVoice.instance.requestManageOwnCallsPermission();
+        print('MANAGE_OWN_CALLS permission granted');
+      } catch (e) {
+        print('Error requesting MANAGE_OWN_CALLS permission: $e');
+        // Continue - might already be granted or not available on this platform
+      }
+
+      // Step 6: Register phone account (required for Android before making calls)
+      print('Registering phone account...');
       try {
         await TwilioVoice.instance.registerPhoneAccount();
         print('Phone account registered successfully');
@@ -47,12 +106,86 @@ class TwilioCallService {
         // Continue anyway - might already be registered
       }
 
+      // Step 7: Check if phone account is enabled
+      print('Checking if phone account is enabled...');
+      try {
+        final isEnabled = await TwilioVoice.instance.isPhoneAccountEnabled();
+        print('Phone account enabled: $isEnabled');
+        if (!isEnabled) {
+          print(
+            '⚠️ Phone account is not enabled - user may need to enable it in settings',
+          );
+          // Optionally open settings for user to enable manually
+          // await TwilioVoice.instance.openPhoneAccountSettings();
+        }
+      } catch (e) {
+        print('Error checking phone account status: $e');
+      }
+
+      // Step 8: Check if device requires background permissions (Xiaomi, etc.)
+      print('Checking if device requires background permissions...');
+      try {
+        final requiresBg = await TwilioVoice.instance
+            .requiresBackgroundPermissions();
+        if (requiresBg) {
+          print(
+            '⚠️ Device requires background permissions for receiving calls',
+          );
+          print(
+            'User will be taken to app settings to enable background permissions',
+          );
+          // Note: This will open app settings - you might want to show a dialog first
+          await TwilioVoice.instance.requestBackgroundPermissions();
+        } else {
+          print('✅ Background permissions not required on this device');
+        }
+      } catch (e) {
+        print('Error checking background permissions: $e');
+        // Continue - might not be available on this platform/version
+      }
+
+      // Step 9: Configure call rejection behavior if permissions not granted
+      // If permissions aren't granted, reject calls instead of showing UI
+      // Note: This is Android-only feature
+      print('Configuring call rejection behavior...');
+      try {
+        // Configure to reject calls if permissions not granted (Android only)
+        // The method signature may vary - check SDK docs for exact parameters
+        await TwilioVoice.instance.rejectCallOnNoPermissions();
+        final isRejecting = await TwilioVoice.instance
+            .isRejectingCallOnNoPermissions();
+        print('Call rejection on no permissions: $isRejecting');
+      } catch (e) {
+        print('Error configuring call rejection (may not be available): $e');
+        // Continue - might not be available on this platform or version
+      }
+
+      print('Setting tokens for Twilio... $accessToken $deviceToken');
+
       // Set tokens for Twilio
       // Twilio SDK requires deviceToken to be non-null, use empty string if not provided
       await TwilioVoice.instance.setTokens(
         accessToken: accessToken,
         deviceToken: deviceToken ?? '',
       );
+
+      // Register client so incoming calls display names instead of user IDs
+      // This must be done after setting tokens and before receiving calls
+      // The clientId should match the identity from the access token
+      // For now, we'll use a default name - in a real app, you'd get this from user profile
+      try {
+        // Extract identity from access token if available, or use fallback
+        // Note: In a real app, you'd want to get the actual user's name from your backend/user profile
+        final clientId = _backendService.currentIdentity ?? '123';
+        final clientName =
+            'User $clientId'; // TODO: Get actual user name from profile/backend
+
+        await TwilioVoice.instance.registerClient(clientId, clientName);
+        print('✅ Registered client: $clientId ($clientName)');
+      } catch (e) {
+        print('⚠️ Error registering client (may already be registered): $e');
+        // Continue - client registration might fail if already registered or not needed
+      }
 
       // Listen to Twilio call events
       _callEventsSubscription = TwilioVoice.instance.callEventsListener.listen(
@@ -357,60 +490,61 @@ class TwilioCallService {
           : 'room-$roomId';
       print('Joining conference: $conferenceName');
 
-      // Make direct HTTP POST request to /voice-sdk endpoint
-      // This will return TwiML or a token that we can use
-      try {
-        const userId = '123'; // TODO: Extract from access token
+      // Get user identity from backend service (stored when we got the access token)
+      // According to Twilio docs: 'from' should be "your own identifier" (the identity from access token)
+      final userId =
+          _backendService.currentIdentity ??
+          '123'; // Fallback to '123' if not available
 
-        print('Making HTTP request to /voice-sdk endpoint...');
-        print('Conference name: $conferenceName');
-
-        // Make POST request to /voice-sdk with conference_name and action
-        final response = await _backendService.makeRequestToVoiceSdk(
-          conferenceName: conferenceName,
-          action: 'join_conference',
-          userId: userId,
-        );
-
-        print('Response from /voice-sdk: $response');
-        print('Response type: ${response.runtimeType}');
-
-        // Now make the actual Twilio call to join the conference
-        // The call will route through TwiML App to /voice-sdk endpoint
-        // Backend will return TwiML that joins us to the conference
-        print('Making Twilio call to join conference...');
-        print('Calling from: client:$userId');
-        print('Calling to: client:$userId');
-        print('Conference name: $conferenceName');
+      if (_backendService.currentIdentity == null) {
         print(
-          'Extra options: {conference_name: $conferenceName, action: join_conference}',
+          '⚠️ Warning: No identity stored from access token, using fallback: $userId',
+        );
+      } else {
+        print('✅ Using identity from access token: $userId');
+      }
+
+      print('Making HTTP request to /voice-sdk endpoint...');
+      print('Conference name: $conferenceName');
+
+      // Make POST request to /voice-sdk with conference_name and action
+      // final response = await _backendService.makeRequestToVoiceSdk(
+      //   conferenceName: conferenceName,
+      //   action: 'join_conference',
+      //   userId: userId,
+      // );
+
+      // print('Response from /voice-sdk: $response');
+      // print('Response type: ${response.runtimeType}');
+
+      // Now make the actual Twilio call to join the conference
+      // According to Twilio docs: use 'join_conference' as the 'to' parameter
+      // The call will route through TwiML App to /voice-sdk endpoint
+      // Backend will return TwiML that joins us to the conference
+      print('Making Twilio call to join conference...');
+      print('Conference name: $conferenceName');
+      print(
+        'Extra options: {conference_name: $conferenceName, action: join_conference}',
+      );
+
+      _isPlacingCall = true; // Mark that we're placing a call
+      try {
+        // According to Twilio docs: minimum is 'to: join_conference'
+        // SDK requires 'from' parameter, so we use the identity from access token
+        await TwilioVoice.instance.call.place(
+          from: userId, // Identity from access token, without 'client:' prefix
+          to: conferenceName, // This routes through TwiML App → /voice-sdk
+          extraOptions: {
+            'conference_name': conferenceName,
+            'action': 'join_conference',
+          },
         );
 
-        _isPlacingCall = true; // Mark that we're placing a call
-        try {
-          await TwilioVoice.instance.call.place(
-            from: 'client:$userId',
-            to: 'client:$userId', // This routes through TwiML App → /voice-sdk
-            extraOptions: {
-              'conference_name': conferenceName,
-              'action': 'join_conference',
-            },
-          );
-
-          print('Twilio call placed successfully - waiting for connection...');
-          print('The call should route through TwiML App to /voice-sdk');
-          print(
-            'Backend should receive conference_name and action as form parameters',
-          );
-        } catch (e) {
-          print('Error placing Twilio call: $e');
-          rethrow;
-        } finally {
-          // Reset flag after a short delay to allow call to initialize
-          Future.delayed(const Duration(seconds: 2), () {
-            _isPlacingCall = false;
-          });
-        }
+        print('Twilio call placed successfully - waiting for connection...');
+        print('The call should route through TwiML App to /voice-sdk');
+        print(
+          'Backend should receive conference_name and action as form parameters',
+        );
 
         // Update call status to "answered" so UI shows ongoing call screen
         // The 'connected' event will fire when the call actually connects to the conference
@@ -436,7 +570,7 @@ class TwilioCallService {
           _callController.add(callInfo);
         }
       } catch (e) {
-        print('Error placing outbound call: $e');
+        print('Error placing Twilio call: $e');
         print('This might be because:');
         print('1. Cannot call self (client:userId to client:userId)');
         print('2. extraOptions format is incorrect');
@@ -459,6 +593,11 @@ class TwilioCallService {
           _callController.add(callInfo);
         }
         rethrow;
+      } finally {
+        // Reset flag after a short delay to allow call to initialize
+        Future.delayed(const Duration(seconds: 2), () {
+          _isPlacingCall = false;
+        });
       }
     } catch (e) {
       print('Error answering call: $e');

@@ -7,6 +7,7 @@ class BackendService {
   final Dio _dio;
   final String baseUrl;
   static const String _domain = 'junction.timohartikainen.fi';
+  String? _currentIdentity; // Store the identity from access token response
 
   BackendService({String? baseUrl})
     : baseUrl = baseUrl ?? 'https://$_domain',
@@ -279,6 +280,14 @@ class BackendService {
           );
         }
 
+        // Store identity from response (backend returns 'identity' field)
+        // This is the user_id that was used to generate the token
+        final identity = data['identity'] as String?;
+        if (identity != null) {
+          _currentIdentity = identity;
+          print('Stored identity from token response: $identity');
+        }
+
         return accessToken;
       }
       throw Exception(
@@ -394,6 +403,10 @@ class BackendService {
       rethrow;
     }
   }
+
+  /// Get the current identity (user_id) from the last access token response
+  /// Returns null if no identity has been stored yet
+  String? get currentIdentity => _currentIdentity;
 
   /// Register FCM device token with backend
   /// Backend will use this to send FCM notifications for incoming calls
