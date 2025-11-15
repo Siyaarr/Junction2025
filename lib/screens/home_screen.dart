@@ -110,8 +110,8 @@ class _HomeScreenState extends State<HomeScreen> {
           if (_initError!.contains('endpoint not found') ||
               _initError!.contains('404')) {
             errorMessage =
-                'Backend API endpoint not available yet. '
-                'The Twilio access token endpoint is being set up.';
+                'Protection service is being set up. '
+                'Please wait a moment and try again.';
           } else if (_initError!.contains('redirect') ||
               _initError!.contains('302')) {
             errorMessage =
@@ -190,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     SizedBox(width: 12),
                     Text(
-                      'Initializing Twilio...',
+                      'Setting up protection...',
                       style: TextStyle(color: Colors.white, fontSize: 14),
                     ),
                   ],
@@ -230,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               Text(
                                 _isInitialized
-                                    ? 'Ready to Receive Calls'
+                                    ? 'Protection Active'
                                     : (_initError != null
                                           ? 'Not Connected'
                                           : 'Initializing...'),
@@ -243,10 +243,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 _isInitialized
-                                    ? 'Waiting for incoming calls via Twilio'
+                                    ? 'AI is monitoring your calls for suspicious activity'
                                     : (_initError != null
-                                          ? 'Backend connection failed. Retry to reconnect.'
-                                          : 'Please wait...'),
+                                          ? 'Connection issue. Please try again.'
+                                          : 'Setting up protection...'),
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[400],
@@ -300,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 16),
                         const Text(
-                          'Ready to receive calls',
+                          'You\'re Protected',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -310,10 +310,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Calls will be received via Twilio. The app will alert you if a scam is detected.',
+                          'Our AI system analyzes incoming calls in real-time to detect potential scams. '
+                          'If a suspicious call is detected, you\'ll receive an immediate alert and warning.',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey[400],
+                            height: 1.4,
                           ),
                           textAlign: TextAlign.center,
                         ),

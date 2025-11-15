@@ -113,4 +113,27 @@ class BackendService {
       print('Error registering device token: $e');
     }
   }
+
+  /// Trigger scam warning during active call
+  /// Backend will redirect the call to inject a warning message
+  Future<bool> triggerScamWarning(
+    String callId, {
+    String? warningMessage,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/twilio/call-warning',
+        data: {
+          'callId': callId,
+          'message':
+              warningMessage ??
+              'Warning: This call has been flagged as potentially suspicious. Please be cautious.',
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error triggering scam warning: $e');
+      return false;
+    }
+  }
 }

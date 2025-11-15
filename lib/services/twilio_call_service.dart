@@ -193,7 +193,12 @@ class TwilioCallService {
 
           _callController.add(_currentCall!);
           _scamAlertController.add(true);
+
+          // Trigger visual/audio alert on device
           await _alertService.triggerScamAlert();
+
+          // Request backend to inject warning message into the call
+          await _triggerCallWarning();
         }
       }
     });
@@ -203,6 +208,32 @@ class TwilioCallService {
   void _stopScamCheckTimer() {
     _scamCheckTimer?.cancel();
     _scamCheckTimer = null;
+  }
+
+  /// Trigger warning message injection into the active call
+  /// This requests the backend to redirect the call and inject a warning
+  Future<void> _triggerCallWarning() async {
+    if (_currentCall == null || _currentCall!.id.isEmpty) {
+      print('Cannot trigger warning: no active call');
+      return;
+    }
+
+    try {
+      final success = await _backendService.triggerScamWarning(
+        _currentCall!.id,
+        warningMessage:
+            'Warning: This call has been flagged as potentially suspicious. '
+            'Please be cautious and do not share personal information.',
+      );
+
+      if (success) {
+        print('Scam warning injected into call successfully');
+      } else {
+        print('Failed to inject scam warning into call');
+      }
+    } catch (e) {
+      print('Error triggering call warning: $e');
+    }
   }
 
   /// Answer incoming Twilio call
