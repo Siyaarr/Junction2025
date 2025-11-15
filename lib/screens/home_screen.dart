@@ -6,7 +6,7 @@ import '../providers/call_provider.dart';
 import '../widgets/call_overlay_manager.dart';
 import '../widgets/animated_phone_icon.dart';
 import '../services/backend_service.dart';
-import '../services/background_polling_service.dart';
+// import '../services/background_polling_service.dart';  // Disabled - workmanager has build errors
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -64,13 +64,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _startRoomPolling();
 
       // Also start background polling (runs when app is in background)
-      // This may fail if plugin isn't registered - that's okay, foreground polling still works
-      final bgPollingStarted = await BackgroundPollingService.startPolling();
-      if (!bgPollingStarted) {
-        print(
-          'Note: Background polling not started. Foreground polling is still active.',
-        );
-      }
+      // Currently disabled - using FCM push notifications instead
+      // final bgPollingStarted = await BackgroundPollingService.startPolling();
+      // if (!bgPollingStarted) {
+      //   print(
+      //     'Note: Background polling not started. Foreground polling is still active.',
+      //   );
+      // }
     } catch (e) {
       setState(() {
         _isInitializing = false;

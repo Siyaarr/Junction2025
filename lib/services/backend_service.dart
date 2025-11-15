@@ -114,7 +114,7 @@ class BackendService {
   /// This should be called when app starts or token expires
   Future<String> getTwilioAccessToken() async {
     try {
-      final response = await _dio.post('/access-token');
+      final response = await _dio.post('/get-access-token');
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>;
         return data['accessToken'] as String;

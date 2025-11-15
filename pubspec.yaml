@@ -35,7 +35,7 @@ dependencies:
   uuid: ^4.3.3
   
   # Background tasks
-  workmanager: ^0.5.2
+  # workmanager: ^0.5.2  # Disabled due to build errors - using FCM push notifications instead
 
 dev_dependencies:
   flutter_test:
