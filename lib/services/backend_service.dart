@@ -7,12 +7,17 @@ class BackendService {
   final String baseUrl;
 
   BackendService({String? baseUrl})
-    : baseUrl = baseUrl ?? 'https://your-backend-url.com/api',
+    : baseUrl = baseUrl ?? 'https://junction.timohartikainen.fi/api',
       _dio = Dio(
         BaseOptions(
-          baseUrl: baseUrl ?? 'https://your-backend-url.com/api',
+          baseUrl: baseUrl ?? 'https://junction.timohartikainen.fi/api',
           connectTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(seconds: 10),
+          followRedirects: true,
+          validateStatus: (status) {
+            // Accept status codes 200-399 (including redirects)
+            return status != null && status >= 200 && status < 400;
+          },
         ),
       );
 
@@ -78,7 +83,21 @@ class BackendService {
         final data = response.data as Map<String, dynamic>;
         return data['accessToken'] as String;
       }
-      throw Exception('Failed to get access token');
+      throw Exception(
+        'Failed to get access token: Status ${response.statusCode}',
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        throw Exception(
+          'Twilio access token endpoint not found. Please ensure the backend API is deployed.',
+        );
+      } else if (e.response?.statusCode == 302) {
+        throw Exception(
+          'Backend returned redirect. Please check the API URL configuration.',
+        );
+      }
+      print('Error getting Twilio access token: $e');
+      rethrow;
     } catch (e) {
       print('Error getting Twilio access token: $e');
       rethrow;

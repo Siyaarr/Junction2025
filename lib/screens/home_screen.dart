@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../providers/call_provider.dart';
 import '../widgets/call_overlay_manager.dart';
 import '../services/backend_service.dart';
-import '../utils/permission_handler.dart' as perm_handler;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,7 +13,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool _permissionsGranted = false;
   bool _isInitialized = false;
   bool _isInitializing = false;
   String? _initError;
@@ -22,51 +20,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _checkPermissions();
-  }
-
-  Future<void> _checkPermissions() async {
-    // For Twilio VoIP, we mainly need notification and microphone permissions
-    final notificationGranted =
-        await perm_handler.AppPermissionHandler.requestNotificationPermission();
-    final microphoneGranted = await perm_handler
-        .AppPermissionHandler.requestPhonePermission(); // This covers microphone on some devices
-
-    setState(() {
-      _permissionsGranted = notificationGranted && microphoneGranted;
-    });
-
-    if (_permissionsGranted) {
-      _initializeApp();
-    } else {
-      _showPermissionDialog();
-    }
-  }
-
-  void _showPermissionDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Permissions Required'),
-        content: const Text(
-          'This app needs notification and microphone permissions to receive calls. '
-          'Please grant these permissions in app settings.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              perm_handler.AppPermissionHandler.openAppSettings();
-            },
-            child: const Text('Open Settings'),
-          ),
-        ],
-      ),
-    );
+    // Initialize immediately - Android will prompt for permissions when needed
+    _initializeApp();
   }
 
   Future<void> _initializeApp() async {
@@ -142,53 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.grey[850],
         elevation: 0,
       ),
-      body: _permissionsGranted
-          ? _buildMainContent()
-          : _buildPermissionRequest(),
-    );
-  }
-
-  Widget _buildPermissionRequest() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.security, size: 80, color: Colors.blue),
-            const SizedBox(height: 24),
-            const Text(
-              'Permissions Required',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'This app needs permissions to receive calls and protect you from scams.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: _checkPermissions,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                backgroundColor: Colors.blue,
-              ),
-              child: const Text(
-                'Grant Permissions',
-                style: TextStyle(fontSize: 16),
-              ),
-            ),
-          ],
-        ),
-      ),
+      body: _buildMainContent(),
     );
   }
 
@@ -212,6 +121,25 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         if (_initError != null) {
+          // Extract a user-friendly error message
+          String errorMessage = _initError!;
+          if (errorMessage.contains('endpoint not found') ||
+              errorMessage.contains('404')) {
+            errorMessage =
+                'Backend API endpoint not available yet.\n\n'
+                'The Twilio access token endpoint is being set up.\n'
+                'Please wait for the backend to be deployed.';
+          } else if (errorMessage.contains('redirect') ||
+              errorMessage.contains('302')) {
+            errorMessage =
+                'Backend configuration issue.\n\n'
+                'The API URL may be incorrect or the server is redirecting.';
+          } else if (errorMessage.contains('Failed to get access token')) {
+            errorMessage =
+                'Unable to connect to backend.\n\n'
+                'Please check your internet connection and ensure the backend is running.';
+          }
+
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
@@ -230,7 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _initError!,
+                    errorMessage,
                     style: const TextStyle(color: Colors.grey),
                     textAlign: TextAlign.center,
                   ),

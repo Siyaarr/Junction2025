@@ -7,10 +7,23 @@ class AlertService {
   factory AlertService() => _instance;
   AlertService._internal();
 
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  AudioPlayer? _audioPlayer;
   Timer? _alertTimer;
   Timer? _vibrationTimer;
   bool _isAlerting = false;
+  bool _audioPlayerAvailable = true;
+
+  /// Initialize audio player if available
+  void _ensureAudioPlayer() {
+    if (_audioPlayer == null && _audioPlayerAvailable) {
+      try {
+        _audioPlayer = AudioPlayer();
+      } catch (e) {
+        print('AudioPlayer not available: $e');
+        _audioPlayerAvailable = false;
+      }
+    }
+  }
 
   /// Trigger scam alert with vibration and sound
   Future<void> triggerScamAlert() async {
@@ -31,13 +44,28 @@ class AlertService {
     });
 
     // Play alarm sound
-    try {
-      // You'll need to add an alarm sound file to assets
-      // For now, using system sound
-      await _audioPlayer.play(AssetSource('sounds/alarm.mp3'));
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-    } catch (e) {
-      // Fallback to system sound if asset not found
+    if (_audioPlayerAvailable) {
+      try {
+        _ensureAudioPlayer();
+        if (_audioPlayer != null) {
+          await _audioPlayer!.play(AssetSource('sounds/alarm.mp3'));
+          await _audioPlayer!.setReleaseMode(ReleaseMode.loop);
+        } else {
+          // Fallback to system sound
+          SystemSound.play(SystemSoundType.alert);
+        }
+      } on MissingPluginException {
+        // AudioPlayer plugin not registered - use system sound
+        print('AudioPlayer plugin not available, using system sound');
+        _audioPlayerAvailable = false;
+        SystemSound.play(SystemSoundType.alert);
+      } catch (e) {
+        // Fallback to system sound if asset not found or other error
+        print('Error playing alarm sound: $e');
+        SystemSound.play(SystemSoundType.alert);
+      }
+    } else {
+      // Use system sound if AudioPlayer is not available
       SystemSound.play(SystemSoundType.alert);
     }
 
@@ -57,7 +85,13 @@ class AlertService {
     _vibrationTimer?.cancel();
     _vibrationTimer = null;
 
-    await _audioPlayer.stop();
+    if (_audioPlayer != null) {
+      try {
+        await _audioPlayer!.stop();
+      } catch (e) {
+        print('Error stopping audio: $e');
+      }
+    }
   }
 
   /// Check if alert is currently active
