@@ -1,0 +1,37 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty("android")) {
+            def android = project.android
+            if (android.namespace == null) {
+                // Try to extract namespace from AndroidManifest.xml
+                def manifestFile = project.file("src/main/AndroidManifest.xml")
+                if (manifestFile.exists()) {
+                    def manifestContent = manifestFile.text
+                    def packageMatch = manifestContent =~ /package="([^"]+)"/
+                    if (packageMatch.find()) {
+                        android.namespace = packageMatch.group(1)
+                    } else {
+                        android.namespace = "com.example.${project.name.replace("-", "_")}"
+                    }
+                } else {
+                    android.namespace = "com.example.${project.name.replace("-", "_")}"
+                }
+            }
+        }
+    }
+}
+
