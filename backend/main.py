@@ -1,6 +1,8 @@
-from flask import Flask, request
+from flask import Flask, jsonify, request, send_file
 from flask_sock import Sock
 from twilio.twiml.voice_response import VoiceResponse, Start
+from twilio.jwt.access_token import AccessToken
+from twilio.jwt.access_token.grants import VoiceGrant
 import json
 import base64
 import threading
@@ -25,6 +27,7 @@ audio_buffer = []
 chunk_number = 1
 is_recording = False
 transcript_buffer = ""
+conference_name = ""
 
 transcriber = DiarizationTranscriber()
 detector = ScamDetector()
@@ -77,21 +80,116 @@ def timer_worker():
         if is_recording:
             save_chunk()
 
-@app.route("/voice", methods=['GET', 'POST'])
-def voice():
-    """Respond to incoming phone calls with a brief message."""
-    # Start our TwiML response
+
+@app.route("/room", methods=['GET'])
+def room():
+    return conference_name
+
+
+@app.route("/beep.mp3", methods=['GET', "POST"])
+def beep():
+    return send_file('phone-call-14472.mp3')
+
+
+@app.route("/wait", methods=['GET', 'POST'])
+def wait():
     resp = VoiceResponse()
     
-    resp.say("Recording in 5 second chunks")
+    resp.pause(length=2)
+
+    for i in range(5):
+        resp.play(f'https://{domain}/beep.mp3')
+        resp.pause(length=2)  # 2-second pause between plays
+            
+    resp.hangup()
+
+    return str(resp)
+
+
+@app.route("/voice", methods=['POST'])
+def voice():
+    """Respond to incoming phone calls with a brief message."""
+    global conference_name
+
+    resp = VoiceResponse()
     
+    call_sid = request.form.get('CallSid')
+    
+    # Create conference room name
+    conference_name = f"room-{call_sid}"
+    print(f"Conference name: {conference_name}")
+
+    # Start streaming
     start = Start()
     start.stream(url=f'wss://{domain}/stream')
     resp.append(start)
-    
-    resp.pause(length=60)
+
+    # Put caller in conference
+    dial = resp.dial()
+    dial.conference(
+        conference_name,
+        wait_url=f'https://{domain}/wait',
+        start_conference_on_enter=False,
+        end_conference_on_exit=True
+    )
     
     return str(resp)
+
+
+@app.route("/voice-sdk", methods=['POST'])  
+def voice_sdk():
+    """Handle Voice SDK calls from mobile app"""
+    resp = VoiceResponse()
+    
+    # Get parameters from Voice SDK call
+    conference_name = request.form.get('conference_name')
+    action = request.form.get('action')
+    from_identity = request.form.get('From')  # Will be "client:user_id"
+    
+    print(f"📱 Voice SDK call from {from_identity}")
+    
+    if action == 'join_conference' and conference_name:
+        dial = resp.dial()
+        dial.conference(
+            conference_name,
+            start_conference_on_enter=True,
+            end_conference_on_exit=True
+        )
+    else:
+        resp.say("Invalid conference room")
+        resp.hangup()
+    
+    return str(resp)
+
+
+@app.route("/get-access-token", methods=['POST'])
+def generate_access_token():
+    user_id = request.json.get('user_id')
+    
+    if not user_id:
+        return jsonify({'error': 'User ID required'}), 400
+    
+    # Get TwiML App SID from environment
+    twiml_app_sid = os.getenv('TWILIO_TWIML_APP_SID')
+    api_key_sid = os.getenv('TWILIO_API_KEY_SID')
+    api_key_secret = os.getenv('TWILIO_API_KEY_SECRET')
+    account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+    
+    # Generate access token
+    token = AccessToken(account_sid, api_key_sid, api_key_secret, identity=user_id)
+    
+    # Add Voice grant with TwiML App SID
+    voice_grant = VoiceGrant(
+        incoming_allow=True,
+        outgoing_application_sid=twiml_app_sid  # Your TwiML App SID
+    )
+    token.add_grant(voice_grant)
+    
+    return jsonify({
+        'access_token': token.to_jwt(),
+        'identity': user_id
+    })
+
 
 @app.route("/recording", methods=['POST'])
 def recording():
