@@ -4,7 +4,9 @@ import 'package:junction_flutter_1/models/call_info.dart';
 import 'package:provider/provider.dart';
 import '../providers/call_provider.dart';
 import '../widgets/call_overlay_manager.dart';
+import '../widgets/animated_phone_icon.dart';
 import '../services/backend_service.dart';
+import '../services/background_polling_service.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -58,8 +60,17 @@ class _HomeScreenState extends State<HomeScreen> {
         _isInitializing = false;
       });
 
-      // Start polling /room endpoint every second for incoming calls
+      // Start polling /room endpoint every second for incoming calls (foreground)
       _startRoomPolling();
+
+      // Also start background polling (runs when app is in background)
+      // This may fail if plugin isn't registered - that's okay, foreground polling still works
+      final bgPollingStarted = await BackgroundPollingService.startPolling();
+      if (!bgPollingStarted) {
+        print(
+          'Note: Background polling not started. Foreground polling is still active.',
+        );
+      }
     } catch (e) {
       setState(() {
         _isInitializing = false;
@@ -157,6 +168,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _stopRoomPolling();
+    // Note: We keep background polling running even when screen is disposed
+    // This ensures calls can be detected when app is in background
     final callProvider = Provider.of<CallProvider>(context, listen: false);
     callProvider.removeListener(_handleCallUpdate);
     CallOverlayManager.hideOverlay();
@@ -342,36 +355,64 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   const Spacer(),
 
-                  // Info section
+                  // Info section with animations
                   Padding(
                     padding: const EdgeInsets.all(24.0),
                     child: Column(
                       children: [
-                        const Icon(
-                          Icons.phone_in_talk,
+                        AnimatedPhoneIcon(
                           size: 64,
                           color: Colors.blue,
+                          isActive: _isInitialized,
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'You\'re Protected',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 800),
+                          curve: Curves.easeOut,
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 20 * (1 - value)),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'You\'re Protected',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          'Our AI system analyzes incoming calls in real-time to detect potential scams. '
-                          'If a suspicious call is detected, you\'ll receive an immediate alert and warning.',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[400],
-                            height: 1.4,
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 1000),
+                          curve: Curves.easeOut,
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 20 * (1 - value)),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Text(
+                            'Our AI system analyzes incoming calls in real-time to detect potential scams. '
+                            'If a suspicious call is detected, you\'ll receive an immediate alert and warning.',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[400],
+                              height: 1.4,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
