@@ -12,6 +12,12 @@ class CallOverlayManager {
   static String?
   _currentCallId; // Track current call ID to prevent restarting ringtone
 
+  /// Dev helper: simulate scam alert on the active ongoing call overlay
+  static void simulateScamAlert() {
+    // This calls into the overlay's public hook if it's mounted
+    OngoingCallOverlay.simulateScam?.call();
+  }
+
   /// Show incoming call overlay
   static void showIncomingCall({
     required BuildContext context,
@@ -27,7 +33,29 @@ class CallOverlayManager {
     // If this is the same call, don't restart ringtone or recreate overlay
     if (_currentCallId == callInfo.id &&
         _currentCallStatus == CallStatus.ringing) {
-      // Call is still ringing, ringtone should continue playing
+      // Same call still ringing: update the overlay content without restarting ringtone
+      if (_overlayEntry != null && _overlayState != null) {
+        // Replace the overlay entry with updated props
+        final previousEntry = _overlayEntry!;
+        _overlayEntry = OverlayEntry(
+          builder: (context) => IncomingCallOverlay(
+            callInfo: callInfo,
+            onAnswer: () {
+              AlertService().stopRingtone();
+              onAnswer();
+              // Don't hide overlay here - it will transition to ongoing call screen
+            },
+            onDecline: () {
+              AlertService().stopRingtone();
+              onDecline();
+              hideOverlay();
+            },
+            isScam: callInfo.isScam ?? false,
+          ),
+        );
+        previousEntry.remove();
+        _overlayState!.insert(_overlayEntry!);
+      }
       return;
     }
 
@@ -71,8 +99,12 @@ class CallOverlayManager {
     required VoidCallback onHangup,
     VoidCallback? onMute,
     VoidCallback? onSpeaker,
+    VoidCallback? onHold,
+    VoidCallback? onResume,
+    VoidCallback? onCallSafetyContact,
     bool isMuted = false,
     bool isSpeakerOn = false,
+    bool isOnHold = false,
   }) {
     // Only show ongoing call overlay if call is answered
     if (callInfo.status != CallStatus.answered) {
@@ -102,8 +134,12 @@ class CallOverlayManager {
         },
         onMute: onMute,
         onSpeaker: onSpeaker,
+        onHold: onHold,
+        onResume: onResume,
+        onCallSafetyContact: onCallSafetyContact,
         isMuted: isMuted,
         isSpeakerOn: isSpeakerOn,
+        isOnHold: isOnHold,
       ),
     );
 
