@@ -214,8 +214,9 @@ class TwilioCallService {
       switch (eventName) {
         case 'incoming':
           print('→ Handling incoming call');
-          // Extract data from CallEvent if available
-          _handleIncomingCall({'from': 'Unknown', 'callSid': ''});
+          // CallEvent doesn't have 'from' field, so pass empty string
+          // The data endpoint fetch will get the actual number
+          _handleIncomingCall({'from': '', 'callSid': ''});
           break;
         case 'ringing':
           print('→ Call is ringing...');
@@ -283,19 +284,53 @@ class TwilioCallService {
 
   /// Handle incoming Twilio call
   void _handleIncomingCall(Map<String, dynamic> event) {
-    final from = event['from'] as String? ?? 'Unknown';
+    // Start with empty string - we'll fetch from data endpoint
+    final from = event['from'] as String? ?? '';
     final callSid = event['callSid'] as String? ?? '';
 
     // Extract caller info from TwiML parameters if available
     final params = event['parameters'] as Map<String, dynamic>?;
     final callerName = params?['__TWI_CALLER_NAME'] as String? ?? from;
 
+    // Use phone number as contact name if no caller name is available
+    // callerName is never null due to null-coalescing, so check if it's different from 'from'
+    final effectiveContactName = (callerName.isNotEmpty && callerName != from)
+        ? callerName
+        : (from.isNotEmpty ? from : null);
+    
+    // If we don't have a number yet, fetch it immediately before creating CallInfo
+    // This ensures we show the actual number right away
+    if (from.isEmpty) {
+      // Fetch the number synchronously if possible, or at least start the fetch
+      _backendService.getCurrentFromNumber().then((fromNumber) {
+        if (fromNumber != null && fromNumber.isNotEmpty && _currentCall != null) {
+          // Use phone number as contact name if no name is available
+          final effectiveContactName = (_currentCall!.contactName != null && 
+              _currentCall!.contactName!.isNotEmpty &&
+              _currentCall!.contactName != _currentCall!.phoneNumber)
+              ? _currentCall!.contactName
+              : fromNumber;
+          
+          _currentCall = CallInfo(
+            id: _currentCall!.id,
+            phoneNumber: fromNumber,
+            contactName: effectiveContactName,
+            timestamp: _currentCall!.timestamp,
+            type: _currentCall!.type,
+            status: _currentCall!.status,
+            isScam: _currentCall!.isScam,
+          );
+          _callController.add(_currentCall!);
+        }
+      });
+    }
+    
     final callInfo = CallInfo(
       id: callSid.isNotEmpty
           ? callSid
           : DateTime.now().millisecondsSinceEpoch.toString(),
-      phoneNumber: from,
-      contactName: callerName,
+      phoneNumber: from.isNotEmpty ? from : '', // Empty string, will be updated by fetch
+      contactName: effectiveContactName,
       timestamp: DateTime.now(),
       type: CallType.incoming,
       status: CallStatus.ringing,
@@ -307,20 +342,26 @@ class TwilioCallService {
     // Start ringtone for incoming call
     _alertService.startRingtone();
 
-    // Try to fetch the caller number from the public data endpoint and update
-    // the current call details without blocking the ringtone/UI.
+    // Always try to fetch the caller number from the public data endpoint and update
+    // This ensures we get the number even if 'from' was provided but might be wrong
     _backendService.getCurrentFromNumber().then((fromNumber) {
       try {
         if (fromNumber != null &&
             fromNumber.isNotEmpty &&
             _currentCall != null &&
-            _currentCall!.status == CallStatus.ringing &&
             _currentCall!.id == callInfo.id &&
             _currentCall!.phoneNumber != fromNumber) {
+          // Use phone number as contact name if no name is available
+          final effectiveContactName = (_currentCall!.contactName != null && 
+              _currentCall!.contactName!.isNotEmpty &&
+              _currentCall!.contactName != _currentCall!.phoneNumber)
+              ? _currentCall!.contactName
+              : fromNumber;
+          
           _currentCall = CallInfo(
             id: _currentCall!.id,
             phoneNumber: fromNumber,
-            contactName: _currentCall!.contactName,
+            contactName: effectiveContactName,
             timestamp: _currentCall!.timestamp,
             type: _currentCall!.type,
             status: _currentCall!.status,
@@ -343,6 +384,36 @@ class TwilioCallService {
     if (_currentCall != null) {
       // Stop ringtone when call connects
       _alertService.stopRingtone();
+
+      // Try to fetch the caller number if we don't have it yet
+      final currentNumber = _currentCall!.phoneNumber;
+      if (currentNumber.isEmpty || currentNumber == 'Incoming Call') {
+        _backendService.getCurrentFromNumber().then((fromNumber) {
+          if (fromNumber != null &&
+              fromNumber.isNotEmpty &&
+              _currentCall != null &&
+              _currentCall!.status == CallStatus.answered &&
+              _currentCall!.phoneNumber != fromNumber) {
+            // Use phone number as contact name if no name is available
+            final effectiveContactName = (_currentCall!.contactName != null && 
+                _currentCall!.contactName!.isNotEmpty &&
+                _currentCall!.contactName != _currentCall!.phoneNumber)
+                ? _currentCall!.contactName
+                : fromNumber;
+            
+            _currentCall = CallInfo(
+              id: _currentCall!.id,
+              phoneNumber: fromNumber,
+              contactName: effectiveContactName,
+              timestamp: _currentCall!.timestamp,
+              type: _currentCall!.type,
+              status: _currentCall!.status,
+              isScam: _currentCall!.isScam,
+            );
+            _callController.add(_currentCall!);
+          }
+        });
+      }
 
       _currentCall = CallInfo(
         id: _currentCall!.id,
@@ -584,10 +655,18 @@ class TwilioCallService {
             _currentCall!.status == CallStatus.ringing) {
           _handleCallConnected(); // This updates status to answered
         } else if (_currentCall == null) {
+          // Try to fetch the caller number from the data endpoint
+          String? fetchedFrom;
+          try {
+            fetchedFrom = await _backendService.getCurrentFromNumber();
+          } catch (e) {
+            print('Error fetching from_number for room call: $e');
+          }
+          
           final callInfo = CallInfo(
             id: roomId,
-            phoneNumber: 'Incoming Call',
-            contactName: 'Unknown Caller',
+            phoneNumber: fetchedFrom ?? 'Incoming Call',
+            contactName: fetchedFrom, // Use phone number as contact name if no name available
             timestamp: DateTime.now(),
             type: CallType.incoming,
             status: CallStatus.answered, // Mark as answered so UI updates
@@ -607,10 +686,18 @@ class TwilioCallService {
             _currentCall!.status == CallStatus.ringing) {
           _handleCallConnected();
         } else if (_currentCall == null) {
+          // Try to fetch the caller number from the data endpoint
+          String? fetchedFrom;
+          try {
+            fetchedFrom = await _backendService.getCurrentFromNumber();
+          } catch (e) {
+            print('Error fetching from_number for room call fallback: $e');
+          }
+          
           final callInfo = CallInfo(
             id: roomId,
-            phoneNumber: 'Incoming Call',
-            contactName: 'Unknown Caller',
+            phoneNumber: fetchedFrom ?? 'Incoming Call',
+            contactName: fetchedFrom, // Use phone number as contact name if no name available
             timestamp: DateTime.now(),
             type: CallType.incoming,
             status: CallStatus.answered,

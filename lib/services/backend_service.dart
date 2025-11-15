@@ -156,25 +156,37 @@ class BackendService {
   }
 
   /// Analyze a call to check if it's a scam
-  /// This should be called when a call starts
+  /// This checks the /data endpoint for current conversation scam status
   Future<bool> analyzeCallForScam(CallInfo callInfo) async {
     try {
-      final response = await _dio.post(
-        '/analyze-call',
-        data: {
-          'phoneNumber': callInfo.phoneNumber,
-          'timestamp': callInfo.timestamp.toIso8601String(),
-          'callId': callInfo.id,
-        },
-      );
-
-      if (response.statusCode == 200) {
+      // Check current conversation scam status from /data endpoint
+      final response = await _dio.get('/data');
+      
+      if (response.statusCode == 200 && response.data is Map) {
         final data = response.data as Map<String, dynamic>;
-        return data['isScam'] as bool? ?? false;
+        final currentConversation = data['current_conversation'] as Map<String, dynamic>?;
+        
+        if (currentConversation != null) {
+          final scamAnalysis = currentConversation['scam_analysis'] as Map<String, dynamic>?;
+          
+          if (scamAnalysis != null) {
+            final isScam = scamAnalysis['is_scam'] as bool? ?? false;
+            final confidence = scamAnalysis['confidence'] as double?;
+            final reasoning = scamAnalysis['reasoning'] as String?;
+            final scamType = scamAnalysis['scam_type'] as String?;
+            
+            print('Initial scam analysis: isScam=$isScam, confidence=$confidence, type=$scamType');
+            if (reasoning != null) {
+              print('Reasoning: $reasoning');
+            }
+            
+            return isScam;
+          }
+        }
       }
       return false;
     } catch (e) {
-      print('Error analyzing call: $e');
+      print('Error analyzing call from /data: $e');
       return false;
     }
   }
@@ -210,19 +222,109 @@ class BackendService {
     }
   }
 
-  /// Get real-time scam detection updates
-  /// Poll this endpoint during an active call
+  /// Get real-time scam detection updates from /data endpoint
+  /// Poll this endpoint during an active call to check current_conversation.scam_analysis.is_scam
   Future<bool?> checkScamStatus(String callId) async {
     try {
-      final response = await _dio.get('/call-status/$callId');
-      if (response.statusCode == 200) {
+      final response = await _dio.get('/data');
+      if (response.statusCode == 200 && response.data is Map) {
         final data = response.data as Map<String, dynamic>;
-        return data['isScam'] as bool?;
+        final currentConversation = data['current_conversation'] as Map<String, dynamic>?;
+        
+        if (currentConversation != null) {
+          final scamAnalysis = currentConversation['scam_analysis'] as Map<String, dynamic>?;
+          
+          if (scamAnalysis != null) {
+            final isScam = scamAnalysis['is_scam'] as bool?;
+            final confidence = scamAnalysis['confidence'] as double?;
+            final reasoning = scamAnalysis['reasoning'] as String?;
+            
+            print('Scam check result: isScam=$isScam, confidence=$confidence');
+            if (reasoning != null) {
+              print('Reasoning: $reasoning');
+            }
+            
+            return isScam;
+          }
+        }
       }
       return null;
     } catch (e) {
-      print('Error checking scam status: $e');
+      print('Error checking scam status from /data: $e');
       return null;
+    }
+  }
+  
+  /// Get detailed scam analysis information from current conversation
+  /// Returns the full scam_analysis object if available
+  Future<Map<String, dynamic>?> getScamAnalysisDetails() async {
+    try {
+      final response = await _dio.get('/data');
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map<String, dynamic>;
+        final currentConversation = data['current_conversation'] as Map<String, dynamic>?;
+        
+        if (currentConversation != null) {
+          return currentConversation['scam_analysis'] as Map<String, dynamic>?;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching scam analysis details: $e');
+      return null;
+    }
+  }
+
+  /// Get all reminders from conversations
+  /// Returns a list of reminders with their metadata
+  Future<List<Map<String, dynamic>>> getReminders() async {
+    try {
+      final response = await _dio.get('/data');
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map<String, dynamic>;
+        final conversations = data['conversations'] as List<dynamic>?;
+        
+        if (conversations == null) return [];
+        
+        final allReminders = <Map<String, dynamic>>[];
+        
+        for (final conversation in conversations) {
+          if (conversation is! Map<String, dynamic>) continue;
+          
+          final reminders = conversation['reminders'] as List<dynamic>?;
+          if (reminders == null || reminders.isEmpty) continue;
+          
+          final fromNumber = conversation['from_number'] as String?;
+          final isContact = conversation['is_contact'] as bool? ?? false;
+          
+          for (final reminder in reminders) {
+            if (reminder is! Map<String, dynamic>) continue;
+            
+            // Add metadata to each reminder
+            allReminders.add({
+              'text': reminder['text'],
+              'time': reminder['time'],
+              'sent': reminder['sent'] ?? false,
+              'from_number': fromNumber,
+              'is_contact': isContact,
+            });
+          }
+        }
+        
+        // Sort by time (upcoming first)
+        allReminders.sort((a, b) {
+          final timeA = DateTime.tryParse(a['time'] as String? ?? '');
+          final timeB = DateTime.tryParse(b['time'] as String? ?? '');
+          if (timeA == null || timeB == null) return 0;
+          return timeA.compareTo(timeB);
+        });
+        
+        return allReminders;
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching reminders: $e');
+      return [];
     }
   }
 

@@ -221,40 +221,42 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
               ),
             ),
 
-            // Content
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Warning banner
-                if (widget.callInfo.isScam == true || _scamPauseActive)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 40),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.red[900],
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.warning, color: Colors.white, size: 24),
-                        SizedBox(width: 12),
-                        Text(
-                          'SCAM DETECTED',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+            // Content with top padding
+            Padding(
+              padding: const EdgeInsets.only(top: 120.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  // Warning banner
+                  if (widget.callInfo.isScam == true || _scamPauseActive)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 40),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red[900],
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.warning, color: Colors.white, size: 24),
+                          SizedBox(width: 12),
+                          Text(
+                            'SCAM DETECTED',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
 
-                // Caller avatar/icon
+                  // Caller avatar/icon
                 Container(
                   width: 120,
                   height: 120,
@@ -275,24 +277,15 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
 
                 const SizedBox(height: 24),
 
-                // Caller name
+                // Caller info (phone number as primary display)
                 Text(
-                  widget.callInfo.contactName ?? 'Unknown',
+                  widget.callInfo.phoneNumber.isNotEmpty
+                      ? widget.callInfo.phoneNumber
+                      : (widget.callInfo.contactName ?? 'Loading...'),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                // Phone number
-                Text(
-                  widget.callInfo.phoneNumber,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 16,
                   ),
                 ),
 
@@ -412,6 +405,7 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                   ),
                 ),
               ],
+            ),
             ),
 
             // Scam side panel / pause assistant
