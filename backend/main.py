@@ -29,7 +29,7 @@ sock = Sock(app)
 
 client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
 
-data_layer = DataLayer()
+data_layer = DataLayer(seed=True)
 transcriber = DiarizationTranscriber()
 detector = ScamDetector()
 summarizer = ConversationSummarizer()
