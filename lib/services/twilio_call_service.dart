@@ -26,7 +26,8 @@ class TwilioCallService {
   Stream<bool> get scamAlertStream => _scamAlertController.stream;
 
   /// Initialize Twilio Voice SDK
-  /// Call this with access token and FCM device token from backend
+  /// Call this with access token from backend
+  /// deviceToken is optional (for push notifications, not currently used)
   Future<void> initialize({
     required String accessToken,
     String? deviceToken,

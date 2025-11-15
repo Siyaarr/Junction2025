@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:junction_flutter_1/models/call_info.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import '../providers/call_provider.dart';
 import '../widgets/call_overlay_manager.dart';
 import '../services/backend_service.dart';
@@ -82,20 +81,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final callProvider = Provider.of<CallProvider>(context, listen: false);
       final backendService = BackendService();
 
-      // Get FCM token
-      final fcmToken = await FirebaseMessaging.instance.getToken();
-      if (fcmToken != null) {
-        // Register FCM token with backend
-        await backendService.registerDeviceToken(fcmToken);
-      }
-
       // Get Twilio access token from backend
       final accessToken = await backendService.getTwilioAccessToken();
 
-      // Initialize Twilio with tokens
+      // Initialize Twilio with access token (no device token needed)
       await callProvider.initializeTwilio(
         accessToken: accessToken,
-        deviceToken: fcmToken,
+        deviceToken: null,
       );
 
       // Listen to call events
