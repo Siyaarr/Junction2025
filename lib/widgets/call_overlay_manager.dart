@@ -11,6 +11,8 @@ class CallOverlayManager {
   static CallStatus? _currentCallStatus;
   static String?
   _currentCallId; // Track current call ID to prevent restarting ringtone
+  static CallInfo?
+  _lastCallInfo; // Track last call info to detect changes (e.g., isScam)
 
   /// Dev helper: simulate scam alert on the active ongoing call overlay
   static void simulateScamAlert() {
@@ -111,21 +113,44 @@ class CallOverlayManager {
       return;
     }
 
-    // If already showing ongoing call, just update it
+    // If already showing ongoing call, check if we need to update it
+    // (e.g., scam status changed)
     if (_currentCallStatus == CallStatus.answered && _overlayEntry != null) {
-      _overlayEntry!.markNeedsBuild();
-      return;
+      // Check if callInfo has changed (especially isScam flag)
+      // If it has, recreate the overlay to show updated scam status
+      final currentCallId = _currentCallId;
+      final callInfoChanged =
+          currentCallId != callInfo.id ||
+          (_lastCallInfo?.isScam != callInfo.isScam);
+
+      if (callInfoChanged) {
+        // CallInfo changed (e.g., scam detected) - recreate overlay
+        print(
+          '🔄 CallInfo changed (isScam: ${callInfo.isScam}) - recreating overlay to show scam alert',
+        );
+        hideOverlay(); // Remove old overlay
+        // Continue to create new overlay below
+      } else {
+        // Same callInfo - just mark for rebuild (though widget should handle updates via didUpdateWidget)
+        _overlayEntry!.markNeedsBuild();
+        return;
+      }
     }
 
+    // Hide any existing overlay before creating new one
     hideOverlay();
     _currentCallStatus = callInfo.status;
+    _currentCallId = callInfo.id;
+    _lastCallInfo = callInfo; // Store for comparison
 
     _overlayState = Overlay.of(context);
 
     // Ensure ringtone is stopped
     AlertService().stopRingtone();
 
+    // Create overlay entry with opaque: true to ensure it's on top
     _overlayEntry = OverlayEntry(
+      opaque: true, // Make overlay opaque to ensure it covers everything
       builder: (context) => OngoingCallOverlay(
         callInfo: callInfo,
         onHangup: () {
@@ -143,10 +168,14 @@ class CallOverlayManager {
       ),
     );
 
+    // Insert overlay at the end to ensure it's on top
     _overlayState?.insert(_overlayEntry!);
 
     // Prevent back button from dismissing overlay
+    // Use immersiveSticky to hide system UI and ensure our overlay is visible
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    print('✅ Ongoing call overlay shown - should appear above Android call UI');
   }
 
   /// Update overlay with scam status
@@ -164,6 +193,7 @@ class CallOverlayManager {
     }
     _currentCallStatus = null;
     _currentCallId = null;
+    _lastCallInfo = null; // Clear last call info
     // Ensure ringtone is stopped when overlay is hidden
     AlertService().stopRingtone();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

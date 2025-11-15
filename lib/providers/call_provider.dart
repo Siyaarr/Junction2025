@@ -49,6 +49,16 @@ class CallProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> toggleMute(bool mute) async {
+    await _callService.toggleMute(mute);
+    // CallInfo will be updated via the stream
+  }
+
+  Future<void> toggleSpeaker(bool speaker) async {
+    await _callService.toggleSpeaker(speaker);
+    // CallInfo will be updated via the stream
+  }
+
   @override
   void dispose() {
     _callService.dispose();

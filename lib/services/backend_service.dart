@@ -156,25 +156,86 @@ class BackendService {
   }
 
   /// Analyze a call to check if it's a scam
-  /// This should be called when a call starts
+  /// This checks the /data endpoint for current conversation scam status
+  /// Returns false if no scam detected or if analysis not available yet
   Future<bool> analyzeCallForScam(CallInfo callInfo) async {
     try {
-      final response = await _dio.post(
-        '/analyze-call',
-        data: {
-          'phoneNumber': callInfo.phoneNumber,
-          'timestamp': callInfo.timestamp.toIso8601String(),
-          'callId': callInfo.id,
-        },
-      );
+      // Check current conversation scam status from /data endpoint
+      final response = await _dio.get('/data');
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 && response.data is Map) {
         final data = response.data as Map<String, dynamic>;
-        return data['isScam'] as bool? ?? false;
+        final currentConversation =
+            data['current_conversation'] as Map<String, dynamic>?;
+
+        if (currentConversation != null) {
+          final scamAnalysis =
+              currentConversation['scam_analysis'] as Map<String, dynamic>?;
+
+          if (scamAnalysis != null) {
+            final isScam = scamAnalysis['is_scam'] as bool? ?? false;
+            final confidence = scamAnalysis['confidence'] as double?;
+            final reasoning = scamAnalysis['reasoning'] as String?;
+            final scamType = scamAnalysis['scam_type'] as String?;
+
+            print(
+              'Initial scam analysis: isScam=$isScam, confidence=$confidence, type=$scamType',
+            );
+            if (reasoning != null) {
+              print('Reasoning: $reasoning');
+            }
+
+            return isScam;
+          } else {
+            // scam_analysis is null - backend hasn't analyzed yet
+            print(
+              '⚠️  Initial check: scam_analysis not available yet - backend still processing first chunk',
+            );
+            return false; // Return false until analysis is available
+          }
+        } else {
+          // No current conversation - might be a timing issue or call hasn't started yet
+          print('⚠️  Initial check: No current_conversation found');
+
+          // Fallback: check conversations array
+          // Handle both formats: "CA..." (call SID) or "room-CA..." (room ID)
+          final conversations = data['conversations'] as List<dynamic>?;
+          if (conversations != null) {
+            for (final conv in conversations) {
+              if (conv is Map<String, dynamic>) {
+                final conferenceName = conv['conference_name'] as String?;
+                bool matches = false;
+                if (conferenceName != null) {
+                  if (callInfo.id.startsWith('room-')) {
+                    matches = conferenceName == callInfo.id;
+                  } else {
+                    matches =
+                        conferenceName == 'room-${callInfo.id}' ||
+                        conferenceName.contains(callInfo.id);
+                  }
+                }
+
+                if (matches) {
+                  final scamAnalysis =
+                      conv['scam_analysis'] as Map<String, dynamic>?;
+                  if (scamAnalysis != null) {
+                    final isScam = scamAnalysis['is_scam'] as bool? ?? false;
+                    print(
+                      'Found scam status in conversations array for $conferenceName: $isScam',
+                    );
+                    return isScam;
+                  }
+                }
+              }
+            }
+          }
+
+          return false;
+        }
       }
       return false;
     } catch (e) {
-      print('Error analyzing call: $e');
+      print('Error analyzing call from /data: $e');
       return false;
     }
   }
@@ -210,19 +271,214 @@ class BackendService {
     }
   }
 
-  /// Get real-time scam detection updates
-  /// Poll this endpoint during an active call
+  /// Get real-time scam detection updates from /data endpoint
+  /// Poll this endpoint during an active call to check current_conversation.scam_analysis.is_scam
+  /// Returns:
+  ///   - true if scam is detected
+  ///   - false if analysis exists and shows no scam
+  ///   - null if no analysis available yet (backend still processing) or no active conversation
   Future<bool?> checkScamStatus(String callId) async {
     try {
-      final response = await _dio.get('/call-status/$callId');
-      if (response.statusCode == 200) {
+      final response = await _dio.get('/data');
+      if (response.statusCode == 200 && response.data is Map) {
         final data = response.data as Map<String, dynamic>;
-        return data['isScam'] as bool?;
+        final currentConversation =
+            data['current_conversation'] as Map<String, dynamic>?;
+
+        if (currentConversation != null) {
+          final scamAnalysis =
+              currentConversation['scam_analysis'] as Map<String, dynamic>?;
+
+          if (scamAnalysis != null) {
+            final isScam = scamAnalysis['is_scam'] as bool?;
+            final confidence = scamAnalysis['confidence'] as double?;
+            final reasoning = scamAnalysis['reasoning'] as String?;
+            final scamType = scamAnalysis['scam_type'] as String?;
+
+            print(
+              'Scam check result: isScam=$isScam, confidence=$confidence, type=$scamType',
+            );
+            if (reasoning != null) {
+              print('Reasoning: $reasoning');
+            }
+
+            // Return false if explicitly false, true if true, null if null
+            return isScam;
+          } else {
+            // scam_analysis exists but is null - backend hasn't analyzed yet
+            print(
+              '⚠️  current_conversation exists but scam_analysis is null - backend still processing',
+            );
+            return null;
+          }
+        } else {
+          // No active conversation - this shouldn't happen during an active call
+          // but could happen if call ended between checks
+          print('⚠️  No current_conversation found - call may have ended');
+
+          // Fallback: check conversations array for this callId
+          // Handle both formats: "CA..." (call SID) or "room-CA..." (room ID)
+          final conversations = data['conversations'] as List<dynamic>?;
+          if (conversations != null) {
+            for (final conv in conversations) {
+              if (conv is Map<String, dynamic>) {
+                final conferenceName = conv['conference_name'] as String?;
+                // Check if this conversation matches our call
+                // Conference name format: "room-CA..." where CA... is the call SID
+                // callId could be "CA..." or "room-CA..."
+                bool matches = false;
+                if (conferenceName != null) {
+                  if (callId.startsWith('room-')) {
+                    // callId is already in room format
+                    matches = conferenceName == callId;
+                  } else {
+                    // callId is just the call SID (CA...)
+                    matches =
+                        conferenceName == 'room-$callId' ||
+                        conferenceName.contains(callId);
+                  }
+                }
+
+                if (matches) {
+                  final scamAnalysis =
+                      conv['scam_analysis'] as Map<String, dynamic>?;
+                  if (scamAnalysis != null) {
+                    final isScam = scamAnalysis['is_scam'] as bool?;
+                    print(
+                      'Found scam status in conversations array for $conferenceName: $isScam',
+                    );
+                    return isScam;
+                  }
+                }
+              }
+            }
+          }
+
+          return null;
+        }
       }
       return null;
     } catch (e) {
-      print('Error checking scam status: $e');
+      print('Error checking scam status from /data: $e');
       return null;
+    }
+  }
+
+  /// Get detailed scam analysis information from current conversation
+  /// Returns the full scam_analysis object if available
+  Future<Map<String, dynamic>?> getScamAnalysisDetails() async {
+    try {
+      final response = await _dio.get('/data');
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map<String, dynamic>;
+        final currentConversation =
+            data['current_conversation'] as Map<String, dynamic>?;
+
+        if (currentConversation != null) {
+          return currentConversation['scam_analysis'] as Map<String, dynamic>?;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching scam analysis details: $e');
+      return null;
+    }
+  }
+
+  /// Get all reminders from conversations
+  /// Returns a list of reminders with their metadata
+  Future<List<Map<String, dynamic>>> getReminders() async {
+    try {
+      final response = await _dio.get('/data');
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map<String, dynamic>;
+        final conversations = data['conversations'] as List<dynamic>?;
+
+        if (conversations == null) return [];
+
+        final allReminders = <Map<String, dynamic>>[];
+
+        for (final conversation in conversations) {
+          if (conversation is! Map<String, dynamic>) continue;
+
+          final reminders = conversation['reminders'] as List<dynamic>?;
+          if (reminders == null || reminders.isEmpty) continue;
+
+          final fromNumber = conversation['from_number'] as String?;
+          final isContact = conversation['is_contact'] as bool? ?? false;
+
+          for (final reminder in reminders) {
+            if (reminder is! Map<String, dynamic>) continue;
+
+            // Add metadata to each reminder
+            allReminders.add({
+              'text': reminder['text'],
+              'time': reminder['time'],
+              'sent': reminder['sent'] ?? false,
+              'from_number': fromNumber,
+              'is_contact': isContact,
+            });
+          }
+        }
+
+        // Sort by time (upcoming first)
+        allReminders.sort((a, b) {
+          final timeA = DateTime.tryParse(a['time'] as String? ?? '');
+          final timeB = DateTime.tryParse(b['time'] as String? ?? '');
+          if (timeA == null || timeB == null) return 0;
+          return timeA.compareTo(timeB);
+        });
+
+        return allReminders;
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching reminders: $e');
+      return [];
+    }
+  }
+
+  /// Get all conversations from /data endpoint
+  /// Returns a list of conversations with all their metadata
+  Future<List<Map<String, dynamic>>> getConversations() async {
+    try {
+      print('Fetching conversations from /data endpoint...');
+      final response = await _dio.get('/data');
+      print('Response status: ${response.statusCode}');
+      
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map<String, dynamic>;
+        final conversations = data['conversations'] as List<dynamic>?;
+
+        if (conversations == null) {
+          print('No conversations found in response');
+          return [];
+        }
+
+        print('Found ${conversations.length} conversations in response');
+        final conversationsList = <Map<String, dynamic>>[];
+
+        for (final conversation in conversations) {
+          if (conversation is! Map<String, dynamic>) continue;
+          conversationsList.add(conversation);
+        }
+
+        // Sort by timestamp (most recent first)
+        conversationsList.sort((a, b) {
+          final timeA = DateTime.tryParse(a['timestamp'] as String? ?? '');
+          final timeB = DateTime.tryParse(b['timestamp'] as String? ?? '');
+          if (timeA == null || timeB == null) return 0;
+          return timeB.compareTo(timeA); // Reverse order for newest first
+        });
+
+        print('Returning ${conversationsList.length} conversations');
+        return conversationsList;
+      }
+      print('Invalid response format or status code');
+      return [];
+    } catch (e) {
+      print('Error fetching conversations: $e');
+      return [];
     }
   }
 
@@ -492,6 +748,26 @@ class BackendService {
       return response.statusCode == 200;
     } catch (e) {
       print('Error triggering scam warning: $e');
+      return false;
+    }
+  }
+
+  /// Add security contact to the active call
+  /// This sends a POST request to /add endpoint to add the trusted person to the call
+  Future<bool> addSecurityContactToCall() async {
+    try {
+      print('Adding security contact to call...');
+      final response = await _dio.post('/add');
+      
+      if (response.statusCode == 200) {
+        print('Security contact added successfully');
+        return true;
+      } else {
+        print('Failed to add security contact: Status ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Error adding security contact to call: $e');
       return false;
     }
   }

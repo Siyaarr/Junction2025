@@ -21,8 +21,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isInitializing = false;
   String? _initError;
   Timer? _roomPollTimer;
+  Timer? _reminderPollTimer;
   String? _currentRoomId;
   final BackendService _backendService = BackendService();
+  List<Map<String, dynamic>> _reminders = [];
+  List<Map<String, dynamic>> _conversations = [];
+  final Set<String> _completedReminders = {}; // Track completed reminders by unique ID
+  final Set<String> _seenConversationTimestamps = {}; // Track seen conversations to avoid duplicates
 
   @override
   void initState() {
@@ -62,6 +67,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Start polling /room endpoint every second for incoming calls (foreground)
       _startRoomPolling();
+      
+      // Start polling for reminders
+      _startReminderPolling();
 
       // Also start background polling (runs when app is in background)
       // Currently disabled - using FCM push notifications instead
@@ -107,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final callInfo = CallInfo(
             id: roomId,
             phoneNumber: fetchedFrom ?? 'Incoming Call',
-            contactName: 'Unknown Caller',
+            contactName: fetchedFrom, // Use phone number as contact name if no name available
             timestamp: DateTime.now(),
             type: CallType.incoming,
             status: CallStatus.ringing,
@@ -132,6 +140,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Ringtone will be stopped by CallOverlayManager
                 callProvider.declineCall();
                 _currentRoomId = null; // Reset after declining
+                // Refetch reminders after call ends
+                _fetchReminders();
               },
             );
           }
@@ -152,6 +162,9 @@ class _HomeScreenState extends State<HomeScreen> {
             callProvider
                 .declineCall(); // This will update call status and clear it
             CallOverlayManager.hideOverlay(); // This will stop the ringtone
+            // Refetch reminders and conversations after call ends
+            _fetchReminders();
+            _fetchConversations();
           }
         }
       } catch (e) {
@@ -163,6 +176,65 @@ class _HomeScreenState extends State<HomeScreen> {
   void _stopRoomPolling() {
     _roomPollTimer?.cancel();
     _roomPollTimer = null;
+  }
+
+  void _startReminderPolling() {
+    // Stop any existing timer
+    _stopReminderPolling();
+    
+    // Fetch immediately
+    _fetchReminders();
+    _fetchConversations();
+
+    // Poll every 30 seconds for reminders and conversations
+    _reminderPollTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      _fetchReminders();
+      _fetchConversations();
+    });
+  }
+
+  void _stopReminderPolling() {
+    _reminderPollTimer?.cancel();
+    _reminderPollTimer = null;
+  }
+
+  Future<void> _fetchReminders() async {
+    try {
+      final reminders = await _backendService.getReminders();
+      if (mounted) {
+        setState(() {
+          _reminders = reminders;
+        });
+      }
+    } catch (e) {
+      print('Error fetching reminders: $e');
+    }
+  }
+
+  Future<void> _fetchConversations() async {
+    try {
+      final conversations = await _backendService.getConversations();
+      print('Fetched ${conversations.length} conversations from backend');
+      if (mounted) {
+        setState(() {
+          // Only add conversations we haven't seen before based on timestamp
+          for (final conv in conversations) {
+            final timestamp = conv['timestamp'] as String?;
+            if (timestamp != null) {
+              _seenConversationTimestamps.add(timestamp);
+            }
+          }
+          _conversations = conversations;
+          print('Updated UI with ${_conversations.length} conversations');
+        });
+      }
+    } catch (e) {
+      print('Error fetching conversations: $e');
+    }
   }
 
   void _handleCallUpdate() {
@@ -183,7 +255,11 @@ class _HomeScreenState extends State<HomeScreen> {
           context: context,
           callInfo: currentCall,
           onAnswer: () => callProvider.answerCall(),
-          onDecline: () => callProvider.declineCall(),
+          onDecline: () {
+            callProvider.declineCall();
+            // Refetch reminders after declining call
+            _fetchReminders();
+          },
         );
         break;
 
@@ -192,8 +268,36 @@ class _HomeScreenState extends State<HomeScreen> {
         CallOverlayManager.showOngoingCall(
           context: context,
           callInfo: currentCall,
-          onHangup: () => callProvider.declineCall(),
-          // TODO: Add mute/speaker callbacks when implemented
+          onHangup: () {
+            callProvider.declineCall();
+            // Refetch reminders after hanging up
+            _fetchReminders();
+          },
+          onMute: () => callProvider.toggleMute(!currentCall.isMuted),
+          onSpeaker: () => callProvider.toggleSpeaker(!currentCall.isSpeakerOn),
+          onCallSafetyContact: () async {
+            // Add security contact to the call
+            final success = await _backendService.addSecurityContactToCall();
+            if (success && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Security contact has been added to the call'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            } else if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Failed to add security contact'),
+                  backgroundColor: Colors.red,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            }
+          },
+          isMuted: currentCall.isMuted,
+          isSpeakerOn: currentCall.isSpeakerOn,
         );
         break;
 
@@ -202,6 +306,8 @@ class _HomeScreenState extends State<HomeScreen> {
       case CallStatus.missed:
         // Hide overlay when call ends
         CallOverlayManager.hideOverlay();
+        // Refetch reminders after call ends
+        _fetchReminders();
         break;
     }
   }
@@ -209,6 +315,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _stopRoomPolling();
+    _stopReminderPolling();
     // Note: We keep background polling running even when screen is disposed
     // This ensures calls can be detected when app is in background
     final callProvider = Provider.of<CallProvider>(context, listen: false);
@@ -365,107 +472,655 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Main content
             Expanded(
-              child: Column(
-                children: [
-                  // Scam alert indicator
-                  if (callProvider.isScamAlertActive)
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.red[900],
-                        borderRadius: BorderRadius.circular(12),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    // Scam alert indicator
+                    if (callProvider.isScamAlertActive)
+                      Container(
+                        margin: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.red[900],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.warning, color: Colors.white, size: 32),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'SCAM ALERT ACTIVE',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: const Row(
+
+                    // Reminders section
+                    if (_reminders.isNotEmpty) _buildRemindersSection(),
+
+                    const SizedBox(height: 24),
+
+                    // Info section with animations
+                    Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
                         children: [
-                          Icon(Icons.warning, color: Colors.white, size: 32),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'SCAM ALERT ACTIVE',
+                          AnimatedPhoneIcon(
+                            size: 64,
+                            color: Colors.blue,
+                            isActive: _isInitialized,
+                          ),
+                          const SizedBox(height: 16),
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            duration: const Duration(milliseconds: 800),
+                            curve: Curves.easeOut,
+                            builder: (context, value, child) {
+                              return Opacity(
+                                opacity: value,
+                                child: Transform.translate(
+                                  offset: Offset(0, 20 * (1 - value)),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              'You\'re Protected',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            duration: const Duration(milliseconds: 1000),
+                            curve: Curves.easeOut,
+                            builder: (context, value, child) {
+                              return Opacity(
+                                opacity: value,
+                                child: Transform.translate(
+                                  offset: Offset(0, 20 * (1 - value)),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: Text(
+                              'Our AI system analyzes incoming calls in real-time to detect potential scams. '
+                              'If a suspicious call is detected, you\'ll receive an immediate alert and warning.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[400],
+                                height: 1.4,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ),
                         ],
                       ),
                     ),
 
-                  const Spacer(),
+                    const SizedBox(height: 24),
 
-                  // Info section with animations
-                  Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      children: [
-                        AnimatedPhoneIcon(
-                          size: 64,
-                          color: Colors.blue,
-                          isActive: _isInitialized,
-                        ),
-                        const SizedBox(height: 16),
-                        TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: const Duration(milliseconds: 800),
-                          curve: Curves.easeOut,
-                          builder: (context, value, child) {
-                            return Opacity(
-                              opacity: value,
-                              child: Transform.translate(
-                                offset: Offset(0, 20 * (1 - value)),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: const Text(
-                            'You\'re Protected',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: const Duration(milliseconds: 1000),
-                          curve: Curves.easeOut,
-                          builder: (context, value, child) {
-                            return Opacity(
-                              opacity: value,
-                              child: Transform.translate(
-                                offset: Offset(0, 20 * (1 - value)),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: Text(
-                            'Our AI system analyzes incoming calls in real-time to detect potential scams. '
-                            'If a suspicious call is detected, you\'ll receive an immediate alert and warning.',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[400],
-                              height: 1.4,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                    // Call log section
+                    if (_conversations.isNotEmpty) _buildCallLogSection(),
 
-                  const Spacer(),
-                ],
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildRemindersSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.notifications_active,
+                    color: Colors.blue,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Reminders',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_reminders.length}',
+                    style: const TextStyle(
+                      color: Colors.blue,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Divider
+          Divider(color: Colors.grey[800], height: 1),
+          
+          // Reminder list
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(12),
+            itemCount: _reminders.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final reminder = _reminders[index];
+              return _buildReminderCard(reminder);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReminderCard(Map<String, dynamic> reminder) {
+    final text = reminder['text'] as String? ?? '';
+    final timeStr = reminder['time'] as String? ?? '';
+    final fromNumber = reminder['from_number'] as String? ?? '';
+    final isContact = reminder['is_contact'] as bool? ?? false;
+    
+    // Create unique ID for this reminder
+    final reminderId = '$text-$timeStr';
+    final isCompleted = _completedReminders.contains(reminderId);
+    
+    final reminderTime = DateTime.tryParse(timeStr);
+    final now = DateTime.now();
+    final isPast = reminderTime != null && reminderTime.isBefore(now);
+    final isToday = reminderTime != null && 
+        reminderTime.year == now.year &&
+        reminderTime.month == now.month &&
+        reminderTime.day == now.day;
+    
+    String formattedTime = '';
+    if (reminderTime != null) {
+      final hour = reminderTime.hour.toString().padLeft(2, '0');
+      final minute = reminderTime.minute.toString().padLeft(2, '0');
+      
+      if (isToday) {
+        formattedTime = 'Today at $hour:$minute';
+      } else if (reminderTime.difference(now).inDays == 1) {
+        formattedTime = 'Tomorrow at $hour:$minute';
+      } else {
+        final month = reminderTime.month.toString().padLeft(2, '0');
+        final day = reminderTime.day.toString().padLeft(2, '0');
+        formattedTime = '$day.$month at $hour:$minute';
+      }
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: (isPast || isCompleted)
+            ? Colors.grey[800]?.withOpacity(0.5)
+            : Colors.grey[800],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isCompleted
+              ? Colors.green.withOpacity(0.5)
+              : (isPast 
+                  ? Colors.grey[700]!
+                  : (isToday ? Colors.orange.withOpacity(0.5) : Colors.blue.withOpacity(0.3))),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Checkbox
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: Checkbox(
+                value: isCompleted,
+                onChanged: (value) {
+                  setState(() {
+                    if (value == true) {
+                      _completedReminders.add(reminderId);
+                    } else {
+                      _completedReminders.remove(reminderId);
+                    }
+                  });
+                },
+                activeColor: Colors.green,
+                checkColor: Colors.white,
+                side: BorderSide(
+                  color: isCompleted
+                      ? Colors.green
+                      : (isPast ? Colors.grey[600]! : Colors.blue),
+                  width: 2,
+                ),
+              ),
+            ),
+          ),
+          
+          const SizedBox(width: 12),
+          
+          // Content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Time and status
+                Row(
+                  children: [
+                    Icon(
+                      isPast ? Icons.history : Icons.schedule,
+                      color: isCompleted
+                          ? Colors.green
+                          : (isPast 
+                              ? Colors.grey[500]
+                              : (isToday ? Colors.orange : Colors.blue)),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        formattedTime,
+                        style: TextStyle(
+                          color: isCompleted
+                              ? Colors.green
+                              : (isPast ? Colors.grey[500] : Colors.blue),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (isContact)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.person,
+                              color: Colors.green,
+                              size: 10,
+                            ),
+                            SizedBox(width: 2),
+                            Text(
+                              'Contact',
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+                
+                const SizedBox(height: 8),
+                
+                // Reminder text
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: isCompleted ? Colors.grey[500] : (isPast ? Colors.grey[400] : Colors.white),
+                    fontSize: 14,
+                    height: 1.3,
+                    decoration: isCompleted ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                
+                // From number (if not a contact)
+                if (fromNumber.isNotEmpty && !isContact) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'From: $fromNumber',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallLogSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.call,
+                    color: Colors.blue,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Call Log',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_conversations.length}',
+                    style: const TextStyle(
+                      color: Colors.blue,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Divider
+          Divider(color: Colors.grey[800], height: 1),
+          
+          // Call list
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(12),
+            itemCount: _conversations.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final conversation = _conversations[index];
+              return _buildCallLogCard(conversation);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallLogCard(Map<String, dynamic> conversation) {
+    final fromNumber = conversation['from_number'] as String? ?? 'Unknown';
+    final isContact = conversation['is_contact'] as bool? ?? false;
+    final scamAlerted = conversation['scam_alerted'] as bool? ?? false;
+    final timestampStr = conversation['timestamp'] as String? ?? '';
+    final keyPoints = (conversation['key_points'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [];
+    
+    final scamAnalysis = conversation['scam_analysis'] as Map<String, dynamic>?;
+    final isScam = scamAnalysis?['is_scam'] as bool? ?? false;
+    final scamType = scamAnalysis?['scam_type'] as String?;
+    final confidence = scamAnalysis?['confidence'] as double?;
+    
+    final timestamp = DateTime.tryParse(timestampStr);
+    final now = DateTime.now();
+    
+    String formattedTime = '';
+    if (timestamp != null) {
+      final hour = timestamp.hour.toString().padLeft(2, '0');
+      final minute = timestamp.minute.toString().padLeft(2, '0');
+      final month = timestamp.month.toString().padLeft(2, '0');
+      final day = timestamp.day.toString().padLeft(2, '0');
+      
+      final isToday = timestamp.year == now.year &&
+          timestamp.month == now.month &&
+          timestamp.day == now.day;
+      
+      if (isToday) {
+        formattedTime = 'Today at $hour:$minute';
+      } else if (timestamp.difference(now).inDays == -1) {
+        formattedTime = 'Yesterday at $hour:$minute';
+      } else {
+        formattedTime = '$day.$month at $hour:$minute';
+      }
+    }
+    
+    // Determine border color based on scam status
+    Color borderColor = Colors.blue.withOpacity(0.3);
+    Color statusColor = Colors.blue;
+    IconData statusIcon = Icons.phone_in_talk;
+    String statusLabel = 'Call';
+    
+    if (isScam || scamAlerted) {
+      borderColor = Colors.red.withOpacity(0.5);
+      statusColor = Colors.red;
+      statusIcon = Icons.warning;
+      statusLabel = 'SCAM ALERT';
+    } else if (isContact) {
+      borderColor = Colors.green.withOpacity(0.3);
+      statusColor = Colors.green;
+      statusIcon = Icons.verified_user;
+      statusLabel = 'Trusted Contact';
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[800],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row with phone number and status
+          Row(
+            children: [
+              Icon(statusIcon, color: statusColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fromNumber,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (formattedTime.isNotEmpty)
+                      Text(
+                        formattedTime,
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          // Scam details if applicable
+          if (isScam && scamType != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.withOpacity(0.3), width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.security, color: Colors.red, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        scamType,
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (confidence != null) ...[
+                        const Spacer(),
+                        Text(
+                          '${(confidence * 100).toStringAsFixed(0)}% confidence',
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (scamAnalysis?['reasoning'] != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      scamAnalysis!['reasoning'] as String,
+                      style: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          
+          // Key points
+          if (keyPoints.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Key Points:',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            ...keyPoints.map((point) => Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '• ',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 13,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          point,
+                          style: TextStyle(
+                            color: Colors.grey[300],
+                            fontSize: 13,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+        ],
+      ),
     );
   }
 }

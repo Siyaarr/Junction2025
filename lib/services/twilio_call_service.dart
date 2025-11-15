@@ -1,9 +1,21 @@
 import 'dart:async';
 import 'package:twilio_voice/twilio_voice.dart';
 import 'package:twilio_voice/models/call_event.dart';
+import 'package:flutter/services.dart';
 import '../models/call_info.dart';
 import 'backend_service.dart';
 import 'alert_service.dart';
+
+/// Custom exception for phone account issues
+class PhoneAccountNotEnabledException implements Exception {
+  final String message;
+  final bool settingsOpened;
+
+  PhoneAccountNotEnabledException(this.message, {this.settingsOpened = false});
+
+  @override
+  String toString() => message;
+}
 
 class TwilioCallService {
   final BackendService _backendService;
@@ -13,6 +25,7 @@ class TwilioCallService {
   Timer? _scamCheckTimer;
   final _callController = StreamController<CallInfo>.broadcast();
   final _scamAlertController = StreamController<bool>.broadcast();
+  final _phoneAccountErrorController = StreamController<String>.broadcast();
   bool _isPlacingCall = false; // Track if we're currently placing a call
 
   TwilioCallService({
@@ -26,6 +39,10 @@ class TwilioCallService {
 
   /// Stream of scam alerts
   Stream<bool> get scamAlertStream => _scamAlertController.stream;
+
+  /// Stream of phone account errors (for UI to show dialogs)
+  Stream<String> get phoneAccountErrorStream =>
+      _phoneAccountErrorController.stream;
 
   /// Initialize Twilio Voice SDK
   /// Call this with access token from backend
@@ -160,7 +177,15 @@ class TwilioCallService {
         // Continue - might not be available on this platform or version
       }
 
-      print('Setting tokens for Twilio... $accessToken $deviceToken');
+      print('\n${"=" * 60}');
+      print('🔑 SETTING TWILIO TOKENS');
+      print('${"=" * 60}');
+      print(
+        'Access Token (first 50 chars): ${accessToken.length > 50 ? accessToken.substring(0, 50) + "..." : accessToken}',
+      );
+      print('Access Token length: ${accessToken.length}');
+      print('Device Token: ${deviceToken ?? "null (using empty string)"}');
+      print('${"=" * 60}\n');
 
       // Set tokens for Twilio
       // Twilio SDK requires deviceToken to be non-null, use empty string if not provided
@@ -168,6 +193,8 @@ class TwilioCallService {
         accessToken: accessToken,
         deviceToken: deviceToken ?? '',
       );
+
+      print('✅ Tokens set successfully');
 
       // Register client so incoming calls display names instead of user IDs
       // This must be done after setting tokens and before receiving calls
@@ -188,12 +215,24 @@ class TwilioCallService {
       }
 
       // Listen to Twilio call events
+      print('\n${"=" * 60}');
+      print('👂 SETTING UP EVENT LISTENER');
+      print('${"=" * 60}');
+      print('Listening to: TwilioVoice.instance.callEventsListener');
       _callEventsSubscription = TwilioVoice.instance.callEventsListener.listen(
         _handleTwilioEvent,
         onError: (error) {
-          print('Twilio call event error: $error');
+          print('\n${"=" * 60}');
+          print('❌ TWILIO EVENT LISTENER ERROR');
+          print('${"=" * 60}');
+          print('Error: $error');
+          print('Error type: ${error.runtimeType}');
+          print('${"=" * 60}\n');
         },
       );
+      print('✅ Event listener set up successfully');
+      print('   Will log all Twilio events (ringing, connected, etc.)');
+      print('${"=" * 60}\n');
     } catch (e) {
       print('Error initializing Twilio: $e');
       rethrow;
@@ -202,7 +241,10 @@ class TwilioCallService {
 
   /// Handle Twilio call events
   void _handleTwilioEvent(dynamic event) {
-    print('=== Twilio event received ===');
+    print('\n${"=" * 60}');
+    print('📡 TWILIO EVENT RECEIVED');
+    print('${"=" * 60}');
+    print('Timestamp: ${DateTime.now().toIso8601String()}');
     print('Event: $event');
     print('Event type: ${event.runtimeType}');
 
@@ -214,8 +256,9 @@ class TwilioCallService {
       switch (eventName) {
         case 'incoming':
           print('→ Handling incoming call');
-          // Extract data from CallEvent if available
-          _handleIncomingCall({'from': 'Unknown', 'callSid': ''});
+          // CallEvent doesn't have 'from' field, so pass empty string
+          // The data endpoint fetch will get the actual number
+          _handleIncomingCall({'from': '', 'callSid': ''});
           break;
         case 'ringing':
           print('→ Call is ringing...');
@@ -275,27 +318,66 @@ class TwilioCallService {
           break;
       }
     } else {
-      print('Event is not a Map or CallEvent, it is: ${event.runtimeType}');
+      print('⚠️  Event is not a Map or CallEvent, it is: ${event.runtimeType}');
       print('Event toString: ${event.toString()}');
     }
-    print('============================');
+    print('${"=" * 60}\n');
   }
 
   /// Handle incoming Twilio call
   void _handleIncomingCall(Map<String, dynamic> event) {
-    final from = event['from'] as String? ?? 'Unknown';
+    // Start with empty string - we'll fetch from data endpoint
+    final from = event['from'] as String? ?? '';
     final callSid = event['callSid'] as String? ?? '';
 
     // Extract caller info from TwiML parameters if available
     final params = event['parameters'] as Map<String, dynamic>?;
     final callerName = params?['__TWI_CALLER_NAME'] as String? ?? from;
 
+    // Use phone number as contact name if no caller name is available
+    // callerName is never null due to null-coalescing, so check if it's different from 'from'
+    final effectiveContactName = (callerName.isNotEmpty && callerName != from)
+        ? callerName
+        : (from.isNotEmpty ? from : null);
+
+    // If we don't have a number yet, fetch it immediately before creating CallInfo
+    // This ensures we show the actual number right away
+    if (from.isEmpty) {
+      // Fetch the number synchronously if possible, or at least start the fetch
+      _backendService.getCurrentFromNumber().then((fromNumber) {
+        if (fromNumber != null &&
+            fromNumber.isNotEmpty &&
+            _currentCall != null) {
+          // Use phone number as contact name if no name is available
+          final effectiveContactName =
+              (_currentCall!.contactName != null &&
+                  _currentCall!.contactName!.isNotEmpty &&
+                  _currentCall!.contactName != _currentCall!.phoneNumber)
+              ? _currentCall!.contactName
+              : fromNumber;
+
+          _currentCall = CallInfo(
+            id: _currentCall!.id,
+            phoneNumber: fromNumber,
+            contactName: effectiveContactName,
+            timestamp: _currentCall!.timestamp,
+            type: _currentCall!.type,
+            status: _currentCall!.status,
+            isScam: _currentCall!.isScam,
+          );
+          _callController.add(_currentCall!);
+        }
+      });
+    }
+
     final callInfo = CallInfo(
       id: callSid.isNotEmpty
           ? callSid
           : DateTime.now().millisecondsSinceEpoch.toString(),
-      phoneNumber: from,
-      contactName: callerName,
+      phoneNumber: from.isNotEmpty
+          ? from
+          : '', // Empty string, will be updated by fetch
+      contactName: effectiveContactName,
       timestamp: DateTime.now(),
       type: CallType.incoming,
       status: CallStatus.ringing,
@@ -307,20 +389,27 @@ class TwilioCallService {
     // Start ringtone for incoming call
     _alertService.startRingtone();
 
-    // Try to fetch the caller number from the public data endpoint and update
-    // the current call details without blocking the ringtone/UI.
+    // Always try to fetch the caller number from the public data endpoint and update
+    // This ensures we get the number even if 'from' was provided but might be wrong
     _backendService.getCurrentFromNumber().then((fromNumber) {
       try {
         if (fromNumber != null &&
             fromNumber.isNotEmpty &&
             _currentCall != null &&
-            _currentCall!.status == CallStatus.ringing &&
             _currentCall!.id == callInfo.id &&
             _currentCall!.phoneNumber != fromNumber) {
+          // Use phone number as contact name if no name is available
+          final effectiveContactName =
+              (_currentCall!.contactName != null &&
+                  _currentCall!.contactName!.isNotEmpty &&
+                  _currentCall!.contactName != _currentCall!.phoneNumber)
+              ? _currentCall!.contactName
+              : fromNumber;
+
           _currentCall = CallInfo(
             id: _currentCall!.id,
             phoneNumber: fromNumber,
-            contactName: _currentCall!.contactName,
+            contactName: effectiveContactName,
             timestamp: _currentCall!.timestamp,
             type: _currentCall!.type,
             status: _currentCall!.status,
@@ -344,6 +433,37 @@ class TwilioCallService {
       // Stop ringtone when call connects
       _alertService.stopRingtone();
 
+      // Try to fetch the caller number if we don't have it yet
+      final currentNumber = _currentCall!.phoneNumber;
+      if (currentNumber.isEmpty || currentNumber == 'Incoming Call') {
+        _backendService.getCurrentFromNumber().then((fromNumber) {
+          if (fromNumber != null &&
+              fromNumber.isNotEmpty &&
+              _currentCall != null &&
+              _currentCall!.status == CallStatus.answered &&
+              _currentCall!.phoneNumber != fromNumber) {
+            // Use phone number as contact name if no name is available
+            final effectiveContactName =
+                (_currentCall!.contactName != null &&
+                    _currentCall!.contactName!.isNotEmpty &&
+                    _currentCall!.contactName != _currentCall!.phoneNumber)
+                ? _currentCall!.contactName
+                : fromNumber;
+
+            _currentCall = CallInfo(
+              id: _currentCall!.id,
+              phoneNumber: fromNumber,
+              contactName: effectiveContactName,
+              timestamp: _currentCall!.timestamp,
+              type: _currentCall!.type,
+              status: _currentCall!.status,
+              isScam: _currentCall!.isScam,
+            );
+            _callController.add(_currentCall!);
+          }
+        });
+      }
+
       _currentCall = CallInfo(
         id: _currentCall!.id,
         phoneNumber: _currentCall!.phoneNumber,
@@ -355,7 +475,29 @@ class TwilioCallService {
       );
 
       _callController.add(_currentCall!);
+
+      // Bring app to foreground IMMEDIATELY to ensure our overlay appears above Android's call UI
+      // No delay - we want the overlay to appear instantly
+      _bringAppToForeground();
+
+      // Start periodic scam detection polling (every 5 seconds)
       _startScamCheckTimer();
+    }
+  }
+
+  /// Bring app to foreground to ensure custom overlay is shown
+  Future<void> _bringAppToForeground() async {
+    try {
+      const platform = MethodChannel('com.example.junction_flutter_1/app_wake');
+      await platform.invokeMethod('bringToForeground');
+      print(
+        '✅ Brought app to foreground - custom call UI should now be visible',
+      );
+    } catch (e) {
+      print('⚠️  Could not bring app to foreground: $e');
+      print(
+        '   Custom overlay may still work, but Android call UI might appear',
+      );
     }
   }
 
@@ -376,18 +518,24 @@ class TwilioCallService {
       );
 
       _callController.add(_currentCall!);
-      _stopScamCheckTimer();
+      _stopScamCheckTimer(); // Stop scam polling when call ends
       _alertService.stopAlert();
       _currentCall = null;
     }
   }
 
-  /// Analyze call for scam detection
+  /// Analyze call for scam detection (initial check when call comes in)
+  /// Note: Backend may not have analyzed the call yet, so this is just an initial check
+  /// The periodic timer will catch scam detection as the backend analyzes the conversation
   Future<void> _analyzeCallForScam(CallInfo callInfo) async {
     try {
+      print('🔍 Initial scam check for call: ${callInfo.id}');
       final isScam = await _backendService.analyzeCallForScam(callInfo);
 
+      print('   Initial scam check result: $isScam');
+
       if (isScam) {
+        print('🚨 SCAM detected in initial check!');
         _currentCall = CallInfo(
           id: callInfo.id,
           phoneNumber: callInfo.phoneNumber,
@@ -401,50 +549,104 @@ class TwilioCallService {
         _callController.add(_currentCall!);
         _scamAlertController.add(true);
         await _alertService.triggerScamAlert();
+      } else {
+        print(
+          '✅ Initial check: No scam detected (backend may still be analyzing)',
+        );
       }
     } catch (e) {
-      print('Error analyzing call: $e');
+      print('⚠️  Error in initial scam analysis: $e');
+      // Don't throw - initial check failure shouldn't block the call
     }
   }
 
   /// Start periodic scam check during active call
+  /// Polls /data endpoint every 5 seconds to check for scam detection updates
   void _startScamCheckTimer() {
     _stopScamCheckTimer();
 
+    print('🔍 Starting scam detection polling (every 5 seconds)');
     _scamCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (_currentCall != null && _currentCall!.status == CallStatus.answered) {
-        final scamStatus = await _backendService.checkScamStatus(
-          _currentCall!.id,
-        );
+      // Safety check: stop timer if no active call
+      if (_currentCall == null) {
+        print('⚠️  No active call - stopping scam check timer');
+        timer.cancel();
+        _scamCheckTimer = null;
+        return;
+      }
 
-        if (scamStatus == true && _currentCall!.isScam != true) {
-          _currentCall = CallInfo(
-            id: _currentCall!.id,
-            phoneNumber: _currentCall!.phoneNumber,
-            contactName: _currentCall!.contactName,
-            timestamp: _currentCall!.timestamp,
-            type: _currentCall!.type,
-            status: _currentCall!.status,
-            isScam: true,
+      // Only check scam status for answered calls
+      if (_currentCall!.status == CallStatus.answered) {
+        try {
+          print('🔍 Checking scam status for call: ${_currentCall!.id}');
+          final scamStatus = await _backendService.checkScamStatus(
+            _currentCall!.id,
           );
 
-          _callController.add(_currentCall!);
-          _scamAlertController.add(true);
+          print(
+            '   Scam status result: $scamStatus (current isScam: ${_currentCall!.isScam})',
+          );
 
-          // Trigger visual/audio alert on device
-          await _alertService.triggerScamAlert();
+          // Only update if scam is detected AND we haven't already marked it as scam
+          if (scamStatus == true && _currentCall!.isScam != true) {
+            print(
+              '🚨 SCAM DETECTED! Updating call status and triggering alerts...',
+            );
 
-          // Request backend to inject warning message into the call
-          await _triggerCallWarning();
+            _currentCall = CallInfo(
+              id: _currentCall!.id,
+              phoneNumber: _currentCall!.phoneNumber,
+              contactName: _currentCall!.contactName,
+              timestamp: _currentCall!.timestamp,
+              type: _currentCall!.type,
+              status: _currentCall!.status,
+              isScam: true,
+            );
+
+            _callController.add(_currentCall!);
+            _scamAlertController.add(true);
+
+            // Trigger visual/audio alert on device
+            await _alertService.triggerScamAlert();
+
+            // Request backend to inject warning message into the call
+            await _triggerCallWarning();
+          } else if (scamStatus == false && _currentCall!.isScam == true) {
+            // Scam status cleared (shouldn't happen often, but handle it)
+            print('✅ Scam status cleared - call is no longer marked as scam');
+            _currentCall = CallInfo(
+              id: _currentCall!.id,
+              phoneNumber: _currentCall!.phoneNumber,
+              contactName: _currentCall!.contactName,
+              timestamp: _currentCall!.timestamp,
+              type: _currentCall!.type,
+              status: _currentCall!.status,
+              isScam: false,
+            );
+            _callController.add(_currentCall!);
+          }
+        } catch (e) {
+          print('⚠️  Error checking scam status: $e');
+          // Don't stop timer on error - continue polling
         }
+      } else {
+        // Call is not answered - stop polling
+        print(
+          '⚠️  Call status is not answered (${_currentCall!.status}) - stopping scam check timer',
+        );
+        timer.cancel();
+        _scamCheckTimer = null;
       }
     });
   }
 
   /// Stop scam check timer
   void _stopScamCheckTimer() {
-    _scamCheckTimer?.cancel();
-    _scamCheckTimer = null;
+    if (_scamCheckTimer != null) {
+      print('🛑 Stopping scam detection polling');
+      _scamCheckTimer!.cancel();
+      _scamCheckTimer = null;
+    }
   }
 
   /// Trigger warning message injection into the active call
@@ -456,20 +658,48 @@ class TwilioCallService {
     }
 
     try {
+      // Try to get the actual Twilio call SID from the SDK
+      String? callSid;
+      try {
+        callSid = await TwilioVoice.instance.call.getSid();
+        print('📞 Got call SID from SDK: $callSid');
+      } catch (e) {
+        print('⚠️  Could not get call SID from SDK: $e');
+        // Fall back to extracting from conference name if it's in "room-CA..." format
+        if (_currentCall!.id.startsWith('room-')) {
+          callSid = _currentCall!.id.replaceFirst('room-', '');
+          print('📞 Extracted call SID from conference name: $callSid');
+        } else {
+          callSid = _currentCall!.id;
+          print('📞 Using call ID as-is: $callSid');
+        }
+      }
+
+      if (callSid == null || callSid.isEmpty) {
+        print('⚠️  Cannot trigger warning: no valid call SID available');
+        return;
+      }
+
       final success = await _backendService.triggerScamWarning(
-        _currentCall!.id,
+        callSid,
         warningMessage:
             'Warning: This call has been flagged as potentially suspicious. '
             'Please be cautious and do not share personal information.',
       );
 
       if (success) {
-        print('Scam warning injected into call successfully');
+        print('✅ Scam warning injected into call successfully');
       } else {
-        print('Failed to inject scam warning into call');
+        print(
+          '⚠️  Failed to inject scam warning into call (but warning was shown to user)',
+        );
       }
     } catch (e) {
-      print('Error triggering call warning: $e');
+      print('⚠️  Error triggering call warning: $e');
+      print(
+        '   Note: Scam was detected and shown to user, but warning could not be injected into call',
+      );
+      // Don't throw - warning injection failure shouldn't affect scam detection
     }
   }
 
@@ -544,33 +774,245 @@ class TwilioCallService {
       // print('Response type: ${response.runtimeType}');
 
       // Now make the actual Twilio call to join the conference
-      // According to Twilio docs: use 'join_conference' as the 'to' parameter
-      // The call will route through TwiML App to /voice-sdk endpoint
-      // Backend will return TwiML that joins us to the conference
-      print('Making Twilio call to join conference...');
-      print('Conference name: $conferenceName');
+      // Strategy: Use the conference name directly as the 'to' parameter
+      // The TwiML App will route this to /voice-sdk endpoint
+      // Backend will use the 'To' parameter as the conference name
+
+      print('\n${"=" * 60}');
+      print('📞 PLACING TWILIO CALL TO JOIN CONFERENCE');
+      print('${"=" * 60}');
+      print('Conference Name: $conferenceName');
+      print('User Identity: $userId');
+      print('From: $userId (will be sent as "client:$userId")');
+      print('To: $conferenceName');
       print(
-        'Extra options: {conference_name: $conferenceName, action: join_conference}',
+        'Extra Options: {conference_name: $conferenceName, action: join_conference}',
       );
+      print('${"=" * 60}\n');
 
       _isPlacingCall = true; // Mark that we're placing a call
       try {
-        // According to Twilio docs: minimum is 'to: join_conference'
-        // SDK requires 'from' parameter, so we use the identity from access token
-        await TwilioVoice.instance.call.place(
-          from: userId, // Identity from access token, without 'client:' prefix
-          to: conferenceName, // This routes through TwiML App → /voice-sdk
+        // PRE-FLIGHT CHECKS
+        print('\n${"=" * 60}');
+        print('🔍 PRE-FLIGHT CHECKS');
+        print('${"=" * 60}');
+
+        // CRITICAL: Ensure phone account is registered before placing call
+        print('📱 Checking phone account registration...');
+        try {
+          final isEnabled = await TwilioVoice.instance.isPhoneAccountEnabled();
+          print('   Phone account enabled: $isEnabled');
+
+          if (!isEnabled) {
+            print(
+              '   ⚠️  Phone account not enabled - attempting to register...',
+            );
+            try {
+              await TwilioVoice.instance.registerPhoneAccount();
+              print('   ✅ Phone account registered');
+
+              // Check again after registration
+              final isEnabledNow = await TwilioVoice.instance
+                  .isPhoneAccountEnabled();
+              print('   Phone account enabled now: $isEnabledNow');
+
+              if (!isEnabledNow) {
+                print(
+                  '   ❌ Phone account still not enabled after registration!',
+                );
+                print(
+                  '   Attempting to open phone account settings for user...',
+                );
+
+                // Try to open phone account settings
+                bool settingsOpened = false;
+                try {
+                  await TwilioVoice.instance.openPhoneAccountSettings();
+                  settingsOpened = true;
+                  print('   ✅ Opened phone account settings');
+                  print(
+                    '   ⚠️  User must enable the phone account in settings',
+                  );
+                  print('   ⚠️  After enabling, try answering the call again');
+
+                  // Emit error to stream for UI to handle
+                  _phoneAccountErrorController.add(
+                    'Phone account needs to be enabled. Settings have been opened. '
+                    'Please enable the phone account and try again.',
+                  );
+                } catch (settingsError) {
+                  print('   ⚠️  Could not open settings: $settingsError');
+                  print('   User must manually enable phone account in:');
+                  print(
+                    '   Settings → Apps → Your App → Default apps → Phone app',
+                  );
+
+                  // Emit error to stream for UI to handle
+                  _phoneAccountErrorController.add(
+                    'Phone account not enabled. Please go to:\n'
+                    'Settings → Apps → Your App → Default apps → Phone app\n'
+                    'Enable the phone account, then try again.',
+                  );
+                }
+
+                // Throw custom exception with context
+                throw PhoneAccountNotEnabledException(
+                  'Phone account not enabled. ${settingsOpened ? "Settings have been opened. " : ""}'
+                  'Please enable it in Android settings and try again.',
+                  settingsOpened: settingsOpened,
+                );
+              }
+            } catch (e) {
+              print('   ❌ Failed to register phone account: $e');
+              // If it's already our custom exception, rethrow it
+              if (e is PhoneAccountNotEnabledException) {
+                rethrow;
+              }
+              throw Exception(
+                'Cannot place call: Phone account registration failed: $e',
+              );
+            }
+          } else {
+            print('   ✅ Phone account is already enabled');
+          }
+        } catch (e) {
+          print('   ❌ Phone account check failed: $e');
+          rethrow; // Don't proceed if phone account isn't ready
+        }
+
+        // Check if SDK is initialized
+        try {
+          final isOnCall = await TwilioVoice.instance.call.isOnCall();
+          print('📞 Is currently on call: $isOnCall');
+        } catch (e) {
+          print('⚠️  Could not check call status: $e');
+        }
+
+        // Check active call
+        try {
+          final activeCall = TwilioVoice.instance.call.activeCall;
+          print('📞 Active call: $activeCall');
+        } catch (e) {
+          print('⚠️  Could not get active call: $e');
+        }
+
+        // Check call SID (if any)
+        try {
+          final callSid = await TwilioVoice.instance.call.getSid();
+          print('📞 Current call SID: ${callSid ?? "None"}');
+        } catch (e) {
+          print('⚠️  Could not get call SID: $e');
+        }
+
+        print('${"=" * 60}\n');
+
+        // Using place() method - more reliable on Android
+        // connect() on Android internally calls placeCall() and has issues extracting 'To' from extraOptions
+        print('📞 CALLING TwilioVoice.instance.call.place()...');
+        print('   Parameters:');
+        print('     from: "$userId" (SDK will add "client:" prefix)');
+        print('     to: "$conferenceName"');
+        print(
+          '     extraOptions: {conference_name: "$conferenceName", action: "join_conference"}',
+        );
+        print('   Timestamp: ${DateTime.now().toIso8601String()}');
+
+        final placeResult = await TwilioVoice.instance.call.place(
+          from: userId, // SDK automatically adds "client:" prefix
+          to: conferenceName, // Conference room name
           extraOptions: {
+            // Custom parameters for backend
+            // Note: These may or may not pass through reliably, but backend should use 'To' parameter
             'conference_name': conferenceName,
             'action': 'join_conference',
           },
         );
 
-        print('Twilio call placed successfully - waiting for connection...');
-        print('The call should route through TwiML App to /voice-sdk');
-        print(
-          'Backend should receive conference_name and action as form parameters',
-        );
+        print('\n${"=" * 60}');
+        print('✅ place() CALL COMPLETED');
+        print('${"=" * 60}');
+        print('Return value: $placeResult');
+        print('Return type: ${placeResult.runtimeType}');
+
+        // Check if call was actually placed
+        if (placeResult == false) {
+          print('\n❌ CRITICAL: place() returned false - call was NOT placed!');
+          print('This usually means:');
+          print('  1. Phone account not registered/enabled');
+          print('  2. Missing permissions (CALL_PHONE, MANAGE_OWN_CALLS)');
+          print('  3. Invalid access token');
+          print('  4. Network connectivity issue');
+          throw Exception(
+            'Failed to place call: place() returned false. Check phone account registration and permissions.',
+          );
+        }
+
+        // Bring app to foreground IMMEDIATELY after call is placed
+        // This ensures our overlay appears before Android's default call UI
+        _bringAppToForeground();
+
+        print('${"=" * 60}\n');
+
+        // POST-PLACEMENT CHECKS
+        print('${"=" * 60}');
+        print('🔍 POST-PLACEMENT CHECKS');
+        print('${"=" * 60}');
+
+        // Wait a moment for call to initialize
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        try {
+          final isOnCallNow = await TwilioVoice.instance.call.isOnCall();
+          print('📞 Is now on call: $isOnCallNow');
+        } catch (e) {
+          print('⚠️  Could not check call status: $e');
+        }
+
+        try {
+          final callSidNow = await TwilioVoice.instance.call.getSid();
+          print('📞 Call SID now: ${callSidNow ?? "None"}');
+          if (callSidNow != null) {
+            print('   ✅ Call was created! SID: $callSidNow');
+          } else {
+            print('   ⚠️  No call SID yet - call may not have been created');
+          }
+        } catch (e) {
+          print('⚠️  Could not get call SID: $e');
+        }
+
+        try {
+          final activeCallNow = TwilioVoice.instance.call.activeCall;
+          print('📞 Active call now: $activeCallNow');
+        } catch (e) {
+          print('⚠️  Could not get active call: $e');
+        }
+
+        print('${"=" * 60}\n');
+
+        print('${"=" * 60}');
+        print('✅ TWILIO CALL PLACED SUCCESSFULLY');
+        print('${"=" * 60}');
+        print('Method: place()');
+        print('From: $userId (SDK will send as "client:$userId")');
+        print('To: $conferenceName');
+        print('Extra Options:');
+        print('  - conference_name: $conferenceName');
+        print('  - action: join_conference');
+        print('Expected flow:');
+        print('  1. Twilio receives call from client:$userId');
+        print('  2. Twilio looks up TwiML App from access token');
+        print('  3. Twilio POSTs to /voice-sdk with:');
+        print('     - From: client:$userId');
+        print('     - To: $conferenceName (backend should use this!)');
+        print('  4. Backend returns TwiML with <Conference>');
+        print('  5. Twilio joins user to conference');
+        print('${"=" * 60}\n');
+
+        print('⏳ Waiting for Twilio events (ringing, connected, etc.)...');
+        print('   If backend is not receiving requests, check:');
+        print('   1. TwiML App Voice URL in Twilio Console');
+        print('   2. Access token includes outgoing.application_sid');
+        print('   3. Twilio Console → Monitor → Logs for call attempts');
 
         // Update call status to "answered" so UI shows ongoing call screen
         // The 'connected' event will fire when the call actually connects to the conference
@@ -584,10 +1026,19 @@ class TwilioCallService {
             _currentCall!.status == CallStatus.ringing) {
           _handleCallConnected(); // This updates status to answered
         } else if (_currentCall == null) {
+          // Try to fetch the caller number from the data endpoint
+          String? fetchedFrom;
+          try {
+            fetchedFrom = await _backendService.getCurrentFromNumber();
+          } catch (e) {
+            print('Error fetching from_number for room call: $e');
+          }
+
           final callInfo = CallInfo(
             id: roomId,
-            phoneNumber: 'Incoming Call',
-            contactName: 'Unknown Caller',
+            phoneNumber: fetchedFrom ?? 'Incoming Call',
+            contactName:
+                fetchedFrom, // Use phone number as contact name if no name available
             timestamp: DateTime.now(),
             type: CallType.incoming,
             status: CallStatus.answered, // Mark as answered so UI updates
@@ -595,22 +1046,94 @@ class TwilioCallService {
           _currentCall = callInfo;
           _callController.add(callInfo);
         }
-      } catch (e) {
-        print('Error placing Twilio call: $e');
-        print('This might be because:');
-        print('1. Cannot call self (client:userId to client:userId)');
-        print('2. extraOptions format is incorrect');
-        print('3. SDK method signature is different');
+      } catch (e, stackTrace) {
+        print('\n${"=" * 60}');
+        print('❌ ERROR PLACING TWILIO CALL');
+        print('${"=" * 60}');
+        print('Method: place()');
+        print('Error: $e');
+        print('Error Type: ${e.runtimeType}');
+        print('Stack Trace: $stackTrace');
+        print('${"=" * 60}');
+
+        // Analyze error type
+        final errorStr = e.toString().toLowerCase();
+        if (e is PhoneAccountNotEnabledException) {
+          print('⚠️  DIAGNOSIS: Phone Account Not Enabled');
+          print('   - Phone account is registered but not enabled');
+          print(
+            '   - Android requires manual user action to enable phone accounts',
+          );
+          if (e.settingsOpened) {
+            print('   - ✅ Settings have been opened automatically');
+            print(
+              '   - Please enable the phone account in the settings screen',
+            );
+          } else {
+            print('   - ⚠️  Could not open settings automatically');
+            print(
+              '   - Please go to: Settings → Apps → Your App → Default apps → Phone app',
+            );
+          }
+          print('   - After enabling, try answering the call again');
+        } else if (errorStr.contains('phone account') ||
+            errorStr.contains('phoneaccount')) {
+          print('⚠️  DIAGNOSIS: Phone Account Not Enabled');
+          print('   - Phone account is registered but not enabled');
+          print(
+            '   - Android requires manual user action to enable phone accounts',
+          );
+          print('   - Settings should have opened automatically');
+          print(
+            '   - If not, go to: Settings → Apps → Your App → Default apps → Phone app',
+          );
+          print(
+            '   - Enable the phone account, then try answering the call again',
+          );
+        } else if (errorStr.contains('token') || errorStr.contains('auth')) {
+          print('⚠️  DIAGNOSIS: Access token issue');
+          print('   - Token may be missing, expired, or invalid');
+          print('   - Check backend /get-access-token endpoint');
+          print('   - Verify TWILIO_TWIML_APP_SID is set in backend');
+        } else if (errorStr.contains('permission')) {
+          print('⚠️  DIAGNOSIS: Permission issue');
+          print('   - Check CALL_PHONE permission');
+          print('   - Check MANAGE_OWN_CALLS permission');
+          print('   - Check phone account is registered and enabled');
+        } else if (errorStr.contains('twiml') || errorStr.contains('app')) {
+          print('⚠️  DIAGNOSIS: TwiML App configuration issue');
+          print('   - Verify TwiML App SID in backend environment variables');
+          print('   - Check TwiML App Voice URL in Twilio Console');
+        } else if (errorStr.contains('network') ||
+            errorStr.contains('connection')) {
+          print('⚠️  DIAGNOSIS: Network issue');
+          print('   - Check internet connectivity');
+          print('   - Verify backend is accessible');
+        } else {
+          print('⚠️  DIAGNOSIS: Unknown error');
+          print('   - Check Twilio Console → Monitor → Logs');
+          print('   - Check backend logs for /voice-sdk calls');
+        }
+        print('${"=" * 60}\n');
 
         // Fallback: Update status anyway
         if (_currentCall != null &&
             _currentCall!.status == CallStatus.ringing) {
           _handleCallConnected();
         } else if (_currentCall == null) {
+          // Try to fetch the caller number from the data endpoint
+          String? fetchedFrom;
+          try {
+            fetchedFrom = await _backendService.getCurrentFromNumber();
+          } catch (e) {
+            print('Error fetching from_number for room call fallback: $e');
+          }
+
           final callInfo = CallInfo(
             id: roomId,
-            phoneNumber: 'Incoming Call',
-            contactName: 'Unknown Caller',
+            phoneNumber: fetchedFrom ?? 'Incoming Call',
+            contactName:
+                fetchedFrom, // Use phone number as contact name if no name available
             timestamp: DateTime.now(),
             type: CallType.incoming,
             status: CallStatus.answered,
@@ -688,7 +1211,7 @@ class TwilioCallService {
         );
 
         _callController.add(_currentCall!);
-        _stopScamCheckTimer();
+        _stopScamCheckTimer(); // Stop scam polling when call is declined
         _alertService.stopAlert();
         _currentCall = null;
       }
@@ -707,10 +1230,62 @@ class TwilioCallService {
           isScam: _currentCall!.isScam,
         );
         _callController.add(_currentCall!);
-        _stopScamCheckTimer();
+        _stopScamCheckTimer(); // Stop scam polling when call is declined (error path)
         _alertService.stopAlert();
         _currentCall = null;
       }
+    }
+  }
+
+  /// Toggle mute status
+  Future<void> toggleMute(bool mute) async {
+    try {
+      await TwilioVoice.instance.call.toggleMute(mute);
+      print('Call ${mute ? "muted" : "unmuted"}');
+
+      // Update current call info
+      if (_currentCall != null) {
+        _currentCall = CallInfo(
+          id: _currentCall!.id,
+          phoneNumber: _currentCall!.phoneNumber,
+          contactName: _currentCall!.contactName,
+          timestamp: _currentCall!.timestamp,
+          type: _currentCall!.type,
+          status: _currentCall!.status,
+          isScam: _currentCall!.isScam,
+          isMuted: mute,
+          isSpeakerOn: _currentCall!.isSpeakerOn,
+        );
+        _callController.add(_currentCall!);
+      }
+    } catch (e) {
+      print('Error toggling mute: $e');
+    }
+  }
+
+  /// Toggle speaker status
+  Future<void> toggleSpeaker(bool speaker) async {
+    try {
+      await TwilioVoice.instance.call.toggleSpeaker(speaker);
+      print('Speaker turned ${speaker ? "on" : "off"}');
+
+      // Update current call info
+      if (_currentCall != null) {
+        _currentCall = CallInfo(
+          id: _currentCall!.id,
+          phoneNumber: _currentCall!.phoneNumber,
+          contactName: _currentCall!.contactName,
+          timestamp: _currentCall!.timestamp,
+          type: _currentCall!.type,
+          status: _currentCall!.status,
+          isScam: _currentCall!.isScam,
+          isMuted: _currentCall!.isMuted,
+          isSpeakerOn: speaker,
+        );
+        _callController.add(_currentCall!);
+      }
+    } catch (e) {
+      print('Error toggling speaker: $e');
     }
   }
 
@@ -724,5 +1299,6 @@ class TwilioCallService {
     _alertService.stopAlert();
     _callController.close();
     _scamAlertController.close();
+    _phoneAccountErrorController.close();
   }
 }

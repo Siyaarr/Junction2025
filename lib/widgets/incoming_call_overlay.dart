@@ -248,16 +248,10 @@ class _IncomingCallOverlayState extends State<IncomingCallOverlay>
                                   backgroundColor: widget.isScam
                                       ? Colors.red.shade300
                                       : Colors.blue.shade300,
-                                  child: Text(
-                                    widget.callInfo.contactName
-                                            ?.substring(0, 1)
-                                            .toUpperCase() ??
-                                        widget.callInfo.phoneNumber.substring(0, 1),
-                                    style: const TextStyle(
-                                      fontSize: 48,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
+                                  child: const Icon(
+                                    Icons.person,
+                                    size: 56,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),
@@ -265,11 +259,13 @@ class _IncomingCallOverlayState extends State<IncomingCallOverlay>
                           ),
                           const SizedBox(height: 24),
 
-                          // Caller name with fade animation
+                          // Caller info with fade animation (phone number as primary display)
                           FadeTransition(
                             opacity: _fadeAnimation,
                             child: Text(
-                              widget.callInfo.contactName ?? 'Unknown',
+                              widget.callInfo.phoneNumber.isNotEmpty
+                                  ? widget.callInfo.phoneNumber
+                                  : (widget.callInfo.contactName ?? 'Loading...'),
                               style: const TextStyle(
                                 fontSize: 28,
                                 fontWeight: FontWeight.bold,
@@ -277,20 +273,6 @@ class _IncomingCallOverlayState extends State<IncomingCallOverlay>
                               ),
                             ),
                           ),
-                          const SizedBox(height: 8),
-
-                          // Phone number with fade animation
-                          FadeTransition(
-                            opacity: _fadeAnimation,
-                            child: Text(
-                              widget.callInfo.phoneNumber,
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.white.withOpacity(0.7),
-                              ),
-                            ),
-                          ),
-
                           // Animated protection indicator (only for non-scam calls)
                           if (!widget.isScam) ...[
                             const SizedBox(height: 16),

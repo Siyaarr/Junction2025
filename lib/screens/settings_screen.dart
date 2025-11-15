@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../services/settings_service.dart';
 import '../services/alert_service.dart';
 import '../models/call_info.dart';
@@ -23,6 +24,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isTestingRingtone = false;
+
+  // Demo AI Assistant call
+  Timer? _demoCallTimer;
+  Timer? _demoCountdownTimer;
+  int _demoCountdown = 0;
+  bool _isDemoActive = false;
+  CallInfo? _mockCallInfo;
+  AudioPlayer? _aiAudioPlayer;
 
   @override
   void initState() {
@@ -135,6 +144,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    _demoCallTimer?.cancel();
+    _demoCountdownTimer?.cancel();
+    _aiAudioPlayer?.dispose();
     _phoneController.dispose();
     super.dispose();
   }
@@ -441,8 +453,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     label: const Text('Test Answered UI'),
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: Colors.green[300],
-                                      side:
-                                          BorderSide(color: Colors.green[700]!),
+                                      side: BorderSide(
+                                        color: Colors.green[700]!,
+                                      ),
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 12,
                                       ),
@@ -458,8 +471,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     label: const Text('Test Answered (Scam)'),
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: Colors.purple[200],
-                                      side:
-                                          BorderSide(color: Colors.purple[700]!),
+                                      side: BorderSide(
+                                        color: Colors.purple[700]!,
+                                      ),
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 12,
                                       ),
@@ -476,11 +490,105 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.amber[300],
                                 side: BorderSide(color: Colors.amber[700]!),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 minimumSize: const Size(double.infinity, 48),
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            const Divider(color: Colors.grey),
+                            const SizedBox(height: 12),
+                            // Demo AI Assistant Call
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.smart_toy,
+                                  color: Colors.purple[300],
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Demo: AI Assistant Call',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Start a 1-minute timer. After the timer, you\'ll receive a mock call from AI Assistant that will play an audio message when answered.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            if (_isDemoActive) ...[
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.purple[900]?.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.purple[700]!,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      'Call will arrive in:',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[400],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '$_demoCountdown seconds',
+                                      style: TextStyle(
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.purple[300],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: _cancelDemoCall,
+                                icon: const Icon(Icons.cancel),
+                                label: const Text('Cancel Demo'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red[300],
+                                  side: BorderSide(color: Colors.red[700]!),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  minimumSize: const Size(double.infinity, 48),
+                                ),
+                              ),
+                            ] else ...[
+                              OutlinedButton.icon(
+                                onPressed: _startDemoCall,
+                                icon: const Icon(Icons.play_arrow),
+                                label: const Text('Start Demo Call (1 min)'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.purple[300],
+                                  side: BorderSide(color: Colors.purple[700]!),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  minimumSize: const Size(double.infinity, 48),
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 12),
                             // Simulate scam alert moved into overlay (dev-only)
                             // OutlinedButton.icon(
@@ -509,6 +617,142 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
     );
+  }
+
+  /// Start demo AI Assistant call (1 minute timer)
+  void _startDemoCall() {
+    if (_isDemoActive) return;
+
+    setState(() {
+      _isDemoActive = true;
+      _demoCountdown = 60; // 1 minute
+    });
+
+    // Start countdown timer (updates UI every second)
+    _demoCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_demoCountdown > 0) {
+          _demoCountdown--;
+        } else {
+          timer.cancel();
+        }
+      });
+    });
+
+    // Start main timer (triggers call after 1 minute)
+    _demoCallTimer = Timer(const Duration(minutes: 1), () {
+      if (mounted) {
+        _triggerMockCall();
+      }
+    });
+
+    _showSnackBar('Demo call will arrive in 1 minute');
+  }
+
+  /// Cancel demo call
+  void _cancelDemoCall() {
+    _demoCallTimer?.cancel();
+    _demoCountdownTimer?.cancel();
+    setState(() {
+      _isDemoActive = false;
+      _demoCountdown = 0;
+    });
+    _showSnackBar('Demo call cancelled');
+  }
+
+  /// Trigger mock incoming call from AI Assistant
+  void _triggerMockCall() {
+    setState(() {
+      _isDemoActive = false;
+      _demoCountdown = 0;
+    });
+    _demoCountdownTimer?.cancel();
+
+    // Create mock call info for AI Assistant
+    // Use empty phone number so only contactName "Hello Assistant" is displayed
+    _mockCallInfo = CallInfo(
+      id: 'demo-ai-assistant-${DateTime.now().millisecondsSinceEpoch}',
+      phoneNumber: '', // Empty so contactName is shown instead
+      contactName: 'Hello Assistant',
+      timestamp: DateTime.now(),
+      type: CallType.incoming,
+      status: CallStatus.ringing,
+      isScam: false,
+    );
+
+    // Show incoming call overlay
+    CallOverlayManager.showIncomingCall(
+      context: context,
+      callInfo: _mockCallInfo!,
+      onAnswer: () {
+        _handleMockCallAnswered();
+      },
+      onDecline: () {
+        _handleMockCallDeclined();
+      },
+    );
+  }
+
+  /// Handle mock call answered - show ongoing call and play audio
+  Future<void> _handleMockCallAnswered() async {
+    if (_mockCallInfo == null) return;
+
+    // Update call status to answered
+    _mockCallInfo = CallInfo(
+      id: _mockCallInfo!.id,
+      phoneNumber: _mockCallInfo!.phoneNumber,
+      contactName: _mockCallInfo!.contactName,
+      timestamp: _mockCallInfo!.timestamp,
+      type: _mockCallInfo!.type,
+      status: CallStatus.answered,
+      isScam: false,
+    );
+
+    // Show ongoing call overlay
+    CallOverlayManager.showOngoingCall(
+      context: context,
+      callInfo: _mockCallInfo!,
+      onHangup: () {
+        _handleMockCallEnded();
+      },
+      isMuted: false,
+      isSpeakerOn: false,
+      isOnHold: false,
+    );
+
+    // Play AI Assistant audio file
+    try {
+      _aiAudioPlayer = AudioPlayer();
+      await _aiAudioPlayer!.play(AssetSource('sounds/AIAss.mp3'));
+      print('✅ Playing AI Assistant audio: AIAss.mp3');
+    } catch (e) {
+      print('⚠️  Error playing AI Assistant audio: $e');
+      _showSnackBar(
+        'Error playing audio file. Make sure AIAss.mp3 is in assets/sounds/',
+        isError: true,
+      );
+    }
+  }
+
+  /// Handle mock call declined
+  void _handleMockCallDeclined() {
+    _mockCallInfo = null;
+    CallOverlayManager.hideOverlay();
+    _showSnackBar('Demo call declined');
+  }
+
+  /// Handle mock call ended
+  void _handleMockCallEnded() {
+    _aiAudioPlayer?.stop();
+    _aiAudioPlayer?.dispose();
+    _aiAudioPlayer = null;
+    _mockCallInfo = null;
+    CallOverlayManager.hideOverlay();
+    _showSnackBar('Demo call ended');
   }
 
   /// Dev feature: Test ringtone playback
@@ -611,6 +855,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       },
+      onCallSafetyContact: () {
+        _showSnackBar(
+          'Security contact would be added to the call (test mode)',
+        );
+      },
     );
   }
 
@@ -633,6 +882,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       callInfo: testCallInfo,
       onHangup: () {
         callProvider.declineCall();
+      },
+      onCallSafetyContact: () {
+        _showSnackBar(
+          'Security contact would be added to the call (test mode)',
+        );
       },
       isMuted: false,
       isSpeakerOn: false,
