@@ -348,6 +348,32 @@ class TwilioCallService {
     // Start ringtone for incoming call
     _alertService.startRingtone();
 
+    // Try to fetch the caller number from the public data endpoint and update
+    // the current call details without blocking the ringtone/UI.
+    _backendService.getCurrentFromNumber().then((fromNumber) {
+      try {
+        if (fromNumber != null &&
+            fromNumber.isNotEmpty &&
+            _currentCall != null &&
+            _currentCall!.status == CallStatus.ringing &&
+            _currentCall!.id == callInfo.id &&
+            _currentCall!.phoneNumber != fromNumber) {
+          _currentCall = CallInfo(
+            id: _currentCall!.id,
+            phoneNumber: fromNumber,
+            contactName: _currentCall!.contactName,
+            timestamp: _currentCall!.timestamp,
+            type: _currentCall!.type,
+            status: _currentCall!.status,
+            isScam: _currentCall!.isScam,
+          );
+          _callController.add(_currentCall!);
+        }
+      } catch (e) {
+        print('Error updating call with fetched from_number: $e');
+      }
+    });
+
     // Start analyzing call for scam
     _analyzeCallForScam(callInfo);
   }

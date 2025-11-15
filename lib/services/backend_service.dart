@@ -192,6 +192,24 @@ class BackendService {
     }
   }
 
+  /// Fetch the current caller phone number from the public data endpoint.
+  /// Returns the E.164 formatted phone number (e.g., "+358...") if available.
+  Future<String?> getCurrentFromNumber() async {
+    try {
+      final response = await _dio.get('/data');
+      if (response.statusCode == 200 && response.data is Map) {
+        final data = response.data as Map<String, dynamic>;
+        final current = data['current_conversation'] as Map<String, dynamic>?;
+        final from = current?['from_number'] as String?;
+        return (from != null && from.isNotEmpty) ? from : null;
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching current from_number: $e');
+      return null;
+    }
+  }
+
   /// Get real-time scam detection updates
   /// Poll this endpoint during an active call
   Future<bool?> checkScamStatus(String callId) async {

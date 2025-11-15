@@ -100,9 +100,13 @@ class _HomeScreenState extends State<HomeScreen> {
           print('Incoming call detected with room ID: $roomId');
 
           // Create CallInfo for the incoming call
+          // Try to fetch the latest caller number from the data endpoint
+          final fetchedFrom =
+              await _backendService.getCurrentFromNumber().catchError((_) => null);
+
           final callInfo = CallInfo(
             id: roomId,
-            phoneNumber: 'Incoming Call',
+            phoneNumber: fetchedFrom ?? 'Incoming Call',
             contactName: 'Unknown Caller',
             timestamp: DateTime.now(),
             type: CallType.incoming,

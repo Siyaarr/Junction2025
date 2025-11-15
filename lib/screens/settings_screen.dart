@@ -413,15 +413,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 12),
+                                // Expanded(
+                                //   child: OutlinedButton.icon(
+                                //     onPressed: () =>
+                                //         _showTestCall(isScam: true),
+                                //     icon: const Icon(Icons.warning),
+                                //     label: const Text('Test Scam Call'),
+                                //     style: OutlinedButton.styleFrom(
+                                //       foregroundColor: Colors.red[300],
+                                //       side: BorderSide(color: Colors.red[700]!),
+                                //       padding: const EdgeInsets.symmetric(
+                                //         vertical: 12,
+                                //       ),
+                                //     ),
+                                //   ),
+                                // ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
                                 Expanded(
                                   child: OutlinedButton.icon(
                                     onPressed: () =>
-                                        _showTestCall(isScam: true),
-                                    icon: const Icon(Icons.warning),
-                                    label: const Text('Test Scam Call'),
+                                        _showTestAnsweredCall(isScam: false),
+                                    icon: const Icon(Icons.call),
+                                    label: const Text('Test Answered UI'),
                                     style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.red[300],
-                                      side: BorderSide(color: Colors.red[700]!),
+                                      foregroundColor: Colors.green[300],
+                                      side:
+                                          BorderSide(color: Colors.green[700]!),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _showTestAnsweredCall(isScam: true),
+                                    icon: const Icon(Icons.call_end),
+                                    label: const Text('Test Answered (Scam)'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.purple[200],
+                                      side:
+                                          BorderSide(color: Colors.purple[700]!),
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 12,
                                       ),
@@ -430,6 +468,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _showTestAnsweredHold,
+                              icon: const Icon(Icons.pause_circle_filled),
+                              label: const Text('Test Answered + Hold'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.amber[300],
+                                side: BorderSide(color: Colors.amber[700]!),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                minimumSize: const Size(double.infinity, 48),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            // Simulate scam alert moved into overlay (dev-only)
+                            // OutlinedButton.icon(
+                            //   onPressed: () {
+                            //     CallOverlayManager.simulateScamAlert();
+                            //     _showSnackBar(
+                            //       'Simulated scam alert (panel slides in)',
+                            //     );
+                            //   },
+                            //   icon: const Icon(Icons.shield),
+                            //   label: const Text('Simulate Scam Alert (Slide In)'),
+                            //   style: OutlinedButton.styleFrom(
+                            //     foregroundColor: Colors.red[300],
+                            //     side: BorderSide(color: Colors.red[700]!),
+                            //     padding:
+                            //         const EdgeInsets.symmetric(vertical: 12),
+                            //     minimumSize: const Size(double.infinity, 48),
+                            //   ),
+                            // ),
                           ],
                         ),
                       ),
@@ -512,6 +582,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// Dev feature: Show test ongoing (answered) call overlay directly
+  void _showTestAnsweredCall({required bool isScam}) {
+    final testCallInfo = CallInfo(
+      id: 'test-answered-${DateTime.now().millisecondsSinceEpoch}',
+      phoneNumber: isScam ? '+1-800-SCAMMER' : '+1-555-0123',
+      contactName: isScam ? 'Suspicious Caller' : 'John Doe',
+      timestamp: DateTime.now(),
+      type: CallType.incoming,
+      status: CallStatus.answered,
+      isScam: isScam,
+    );
+
+    final callProvider = Provider.of<CallProvider>(context, listen: false);
+
+    CallOverlayManager.showOngoingCall(
+      context: context,
+      callInfo: testCallInfo,
+      onHangup: () {
+        callProvider.declineCall();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Test ongoing call ended'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Dev feature: Show test answered UI with Hold active initially
+  void _showTestAnsweredHold() {
+    final testCallInfo = CallInfo(
+      id: 'test-answered-hold-${DateTime.now().millisecondsSinceEpoch}',
+      phoneNumber: '+1-555-0999',
+      contactName: 'Hold Demo',
+      timestamp: DateTime.now(),
+      type: CallType.incoming,
+      status: CallStatus.answered,
+      isScam: false,
+    );
+
+    final callProvider = Provider.of<CallProvider>(context, listen: false);
+
+    CallOverlayManager.showOngoingCall(
+      context: context,
+      callInfo: testCallInfo,
+      onHangup: () {
+        callProvider.declineCall();
+      },
+      isMuted: false,
+      isSpeakerOn: false,
+      isOnHold: true,
     );
   }
 }
