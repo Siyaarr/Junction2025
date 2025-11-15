@@ -79,7 +79,7 @@ class _IncomingCallOverlayState extends State<IncomingCallOverlay>
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.black87,
+      color: Colors.black,
       child: SafeArea(
         child: AnimatedBuilder(
           animation: Listenable.merge([_entryController, _rippleController]),
@@ -95,201 +95,263 @@ class _IncomingCallOverlayState extends State<IncomingCallOverlay>
                         colors: [Color(0xFFFF4444), Color(0xFFCC0000)],
                       )
                     : const LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0xFF1E1E1E), Color(0xFF000000)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF0B1020), Color(0xFF0E1A2F), Color(0xFF0B2345)],
                       ),
               ),
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Spacer(flex: 2),
-
-                      // Scam warning banner with animation
-                      if (widget.isScam)
-                        ScaleTransition(
-                          scale: _fadeAnimation,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 10,
-                            ),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.red.withOpacity(0.5),
-                                  blurRadius: 20,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(
-                                  Icons.warning,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  'POTENTIAL SCAM DETECTED!',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
+              child: Stack(
+                children: [
+                  // Subtle decorative radial glows (only for non-scam state)
+                  if (!widget.isScam) ...[
+                    Positioned(
+                      top: -60,
+                      left: -40,
+                      child: Container(
+                        width: 220,
+                        height: 220,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Colors.blueAccent.withOpacity(0.25),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 1.0],
                           ),
                         ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: -80,
+                      right: -50,
+                      child: Container(
+                        width: 260,
+                        height: 260,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Colors.tealAccent.withOpacity(0.20),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 180,
+                      right: -70,
+                      child: Container(
+                        width: 180,
+                        height: 180,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Colors.indigoAccent.withOpacity(0.18),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
 
-                      // Animated caller avatar with ripple effect
-                      Stack(
-                        alignment: Alignment.center,
+                  SlideTransition(
+                    position: _slideAnimation,
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Ripple circles
-                          if (!widget.isScam)
-                            ...List.generate(2, (index) {
-                              final delay = index * 0.5;
-                              final animationValue =
-                                  ((_rippleAnimation.value * 2 + delay) % 1.0);
-                              final opacity = (1.0 - animationValue) * 0.2;
-                              final scale = 1.0 + (animationValue * 0.5);
+                          const Spacer(flex: 2),
 
-                              return Transform.scale(
-                                scale: scale,
-                                child: Container(
-                                  width: 120,
-                                  height: 120,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.blue.withOpacity(opacity),
-                                      width: 2,
+                          // Scam warning banner with animation
+                          if (widget.isScam)
+                            ScaleTransition(
+                              scale: _fadeAnimation,
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 10,
+                                ),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.red.withOpacity(0.5),
+                                      blurRadius: 20,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(
+                                      Icons.warning,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'POTENTIAL SCAM DETECTED!',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          // Animated caller avatar with ripple effect
+                          Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              // Ripple circles
+                              if (!widget.isScam)
+                                ...List.generate(2, (index) {
+                                  final delay = index * 0.5;
+                                  final animationValue =
+                                      ((_rippleAnimation.value * 2 + delay) % 1.0);
+                                  final opacity = (1.0 - animationValue) * 0.2;
+                                  final scale = 1.0 + (animationValue * 0.5);
+
+                                  return Transform.scale(
+                                    scale: scale,
+                                    child: Container(
+                                      width: 120,
+                                      height: 120,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.blue.withOpacity(opacity),
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              // Avatar with scale animation
+                              ScaleTransition(
+                                scale: _avatarScaleAnimation,
+                                child: CircleAvatar(
+                                  radius: 60,
+                                  backgroundColor: widget.isScam
+                                      ? Colors.red.shade300
+                                      : Colors.blue.shade300,
+                                  child: Text(
+                                    widget.callInfo.contactName
+                                            ?.substring(0, 1)
+                                            .toUpperCase() ??
+                                        widget.callInfo.phoneNumber.substring(0, 1),
+                                    style: const TextStyle(
+                                      fontSize: 48,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ),
-                              );
-                            }),
-                          // Avatar with scale animation
-                          ScaleTransition(
-                            scale: _avatarScaleAnimation,
-                            child: CircleAvatar(
-                              radius: 60,
-                              backgroundColor: widget.isScam
-                                  ? Colors.red.shade300
-                                  : Colors.blue.shade300,
-                              child: Text(
-                                widget.callInfo.contactName
-                                        ?.substring(0, 1)
-                                        .toUpperCase() ??
-                                    widget.callInfo.phoneNumber.substring(0, 1),
-                                style: const TextStyle(
-                                  fontSize: 48,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Caller name with fade animation
+                          FadeTransition(
+                            opacity: _fadeAnimation,
+                            child: Text(
+                              widget.callInfo.contactName ?? 'Unknown',
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
+                          const SizedBox(height: 8),
 
-                      // Caller name with fade animation
-                      FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: Text(
-                          widget.callInfo.contactName ?? 'Unknown',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Phone number with fade animation
-                      FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: Text(
-                          widget.callInfo.phoneNumber,
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.white.withOpacity(0.7),
-                          ),
-                        ),
-                      ),
-
-                      // Animated protection indicator (only for non-scam calls)
-                      if (!widget.isScam) ...[
-                        const SizedBox(height: 16),
-                        FadeTransition(
-                          opacity: _fadeAnimation,
-                          child: const AnimatedProtectionBadge(),
-                        ),
-                      ],
-
-                      const Spacer(flex: 3),
-
-                      // Action buttons with slide animation
-                      SlideTransition(
-                        position:
-                            Tween<Offset>(
-                              begin: const Offset(0, 0.5),
-                              end: Offset.zero,
-                            ).animate(
-                              CurvedAnimation(
-                                parent: _entryController,
-                                curve: const Interval(
-                                  0.3,
-                                  1.0,
-                                  curve: Curves.easeOut,
-                                ),
+                          // Phone number with fade animation
+                          FadeTransition(
+                            opacity: _fadeAnimation,
+                            child: Text(
+                              widget.callInfo.phoneNumber,
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.white.withOpacity(0.7),
                               ),
                             ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            // Decline button
-                            _CallActionButton(
-                              icon: Icons.call_end,
-                              label: 'Decline',
-                              color: Colors.red,
-                              onTap: () {
-                                HapticFeedback.mediumImpact();
-                                widget.onDecline();
-                              },
-                            ),
+                          ),
 
-                            // Answer button
-                            _CallActionButton(
-                              icon: Icons.call,
-                              label: 'Answer',
-                              color: Colors.green,
-                              onTap: () {
-                                HapticFeedback.mediumImpact();
-                                widget.onAnswer();
-                              },
+                          // Animated protection indicator (only for non-scam calls)
+                          if (!widget.isScam) ...[
+                            const SizedBox(height: 16),
+                            FadeTransition(
+                              opacity: _fadeAnimation,
+                              child: const AnimatedProtectionBadge(),
                             ),
                           ],
-                        ),
-                      ),
 
-                      const SizedBox(height: 40),
-                    ],
+                          const Spacer(flex: 3),
+
+                          // Action buttons with slide animation
+                          SlideTransition(
+                            position:
+                                Tween<Offset>(
+                                  begin: const Offset(0, 0.5),
+                                  end: Offset.zero,
+                                ).animate(
+                                  CurvedAnimation(
+                                    parent: _entryController,
+                                    curve: const Interval(
+                                      0.3,
+                                      1.0,
+                                      curve: Curves.easeOut,
+                                    ),
+                                  ),
+                                ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                // Decline button
+                                _CallActionButton(
+                                  icon: Icons.call_end,
+                                  label: 'Decline',
+                                  color: Colors.red,
+                                  onTap: () {
+                                    HapticFeedback.mediumImpact();
+                                    widget.onDecline();
+                                  },
+                                ),
+
+                                // Answer button
+                                _CallActionButton(
+                                  icon: Icons.call,
+                                  label: 'Answer',
+                                  color: Colors.green,
+                                  onTap: () {
+                                    HapticFeedback.mediumImpact();
+                                    widget.onAnswer();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 40),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             );
           },

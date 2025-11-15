@@ -8,10 +8,12 @@ class AlertService {
   AlertService._internal();
 
   AudioPlayer? _audioPlayer;
+  AudioPlayer? _ringtonePlayer;
   Timer? _alertTimer;
   Timer? _vibrationTimer;
   bool _isAlerting = false;
   bool _audioPlayerAvailable = true;
+  bool _isRinging = false;
 
   /// Initialize audio player if available
   void _ensureAudioPlayer() {
@@ -25,9 +27,68 @@ class AlertService {
     }
   }
 
+  /// Initialize ringtone player if available
+  void _ensureRingtonePlayer() {
+    if (_ringtonePlayer == null && _audioPlayerAvailable) {
+      try {
+        _ringtonePlayer = AudioPlayer();
+      } catch (e) {
+        print('Ringtone AudioPlayer not available: $e');
+        _audioPlayerAvailable = false;
+      }
+    }
+  }
+
+  /// Start ringtone loop for incoming call
+  Future<void> startRingtone() async {
+    if (_isRinging) return;
+    if (!_audioPlayerAvailable) {
+      SystemSound.play(SystemSoundType.alert);
+      _isRinging = true;
+      return;
+    }
+
+    try {
+      _ensureRingtonePlayer();
+      if (_ringtonePlayer != null) {
+        await _ringtonePlayer!.play(AssetSource('sounds/ringtone.mp3'));
+        await _ringtonePlayer!.setReleaseMode(ReleaseMode.loop);
+        _isRinging = true;
+      } else {
+        SystemSound.play(SystemSoundType.alert);
+        _isRinging = true;
+      }
+    } on MissingPluginException {
+      print('Ringtone plugin not available, using system sound');
+      _audioPlayerAvailable = false;
+      SystemSound.play(SystemSoundType.alert);
+      _isRinging = true;
+    } catch (e) {
+      print('Error playing ringtone: $e');
+      SystemSound.play(SystemSoundType.alert);
+      _isRinging = true;
+    }
+  }
+
+  /// Stop ringtone
+  Future<void> stopRingtone() async {
+    if (!_isRinging) return;
+    _isRinging = false;
+    if (_ringtonePlayer != null) {
+      try {
+        await _ringtonePlayer!.stop();
+      } catch (e) {
+        print('Error stopping ringtone: $e');
+      }
+    }
+  }
+
   /// Trigger scam alert with vibration and sound
   Future<void> triggerScamAlert() async {
     if (_isAlerting) return;
+
+    // Ensure ringtone is stopped when alarm starts
+    await stopRingtone();
 
     _isAlerting = true;
 
@@ -96,4 +157,5 @@ class AlertService {
 
   /// Check if alert is currently active
   bool get isAlerting => _isAlerting;
+  bool get isRinging => _isRinging;
 }

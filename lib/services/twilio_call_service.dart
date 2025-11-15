@@ -103,6 +103,9 @@ class TwilioCallService {
     _currentCall = callInfo;
     _callController.add(callInfo);
 
+    // Start ringtone for incoming call
+    _alertService.startRingtone();
+
     // Start analyzing call for scam
     _analyzeCallForScam(callInfo);
   }
@@ -110,6 +113,9 @@ class TwilioCallService {
   /// Handle call connected (answered)
   void _handleCallConnected() {
     if (_currentCall != null) {
+      // Stop ringtone when call connects
+      _alertService.stopRingtone();
+
       _currentCall = CallInfo(
         id: _currentCall!.id,
         phoneNumber: _currentCall!.phoneNumber,
@@ -128,6 +134,8 @@ class TwilioCallService {
   /// Handle call ended
   void _handleCallEnded() {
     if (_currentCall != null) {
+      // Stop any ongoing sounds
+      _alertService.stopRingtone();
       _currentCall = CallInfo(
         id: _currentCall!.id,
         phoneNumber: _currentCall!.phoneNumber,
@@ -253,6 +261,8 @@ class TwilioCallService {
     try {
       await TwilioVoice.instance.call.hangUp();
       if (_currentCall != null) {
+        // Stop any ongoing sounds
+        _alertService.stopRingtone();
         _currentCall = CallInfo(
           id: _currentCall!.id,
           phoneNumber: _currentCall!.phoneNumber,

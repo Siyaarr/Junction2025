@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'incoming_call_overlay.dart';
 import '../models/call_info.dart';
+import '../services/alert_service.dart';
 
 class CallOverlayManager {
   static OverlayEntry? _overlayEntry;
@@ -18,14 +19,19 @@ class CallOverlayManager {
 
     _overlayState = Overlay.of(context);
 
+    // Start ringtone when showing the overlay (for non-Twilio/polling path)
+    AlertService().startRingtone();
+
     _overlayEntry = OverlayEntry(
       builder: (context) => IncomingCallOverlay(
         callInfo: callInfo,
         onAnswer: () {
+          AlertService().stopRingtone();
           onAnswer();
           hideOverlay();
         },
         onDecline: () {
+          AlertService().stopRingtone();
           onDecline();
           hideOverlay();
         },
@@ -52,6 +58,8 @@ class CallOverlayManager {
       _overlayEntry!.remove();
       _overlayEntry = null;
     }
+    // Ensure ringtone is stopped when overlay is hidden
+    AlertService().stopRingtone();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 }
