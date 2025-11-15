@@ -1,3 +1,4 @@
+
 buildscript {
     repositories {
         google()
@@ -12,26 +13,18 @@ allprojects {
     }
 }
 
+// Put all build outputs under <projectRoot>/build so Flutter can find the APK
+rootProject.buildDir = '../build'
 subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty("android")) {
-            def android = project.android
-            if (android.namespace == null) {
-                // Try to extract namespace from AndroidManifest.xml
-                def manifestFile = project.file("src/main/AndroidManifest.xml")
-                if (manifestFile.exists()) {
-                    def manifestContent = manifestFile.text
-                    def packageMatch = manifestContent =~ /package="([^"]+)"/
-                    if (packageMatch.find()) {
-                        android.namespace = packageMatch.group(1)
-                    } else {
-                        android.namespace = "com.example.${project.name.replace("-", "_")}"
-                    }
-                } else {
-                    android.namespace = "com.example.${project.name.replace("-", "_")}"
-                }
-            }
-        }
-    }
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
 
+// Flutter expects this to ensure :app is evaluated early
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+// Clean task used by `flutter clean`
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

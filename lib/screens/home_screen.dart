@@ -100,16 +100,20 @@ class _HomeScreenState extends State<HomeScreen> {
           print('Incoming call detected with room ID: $roomId');
 
           // Create CallInfo for the incoming call
+          // Try to fetch the latest caller number from the data endpoint
+          final fetchedFrom =
+              await _backendService.getCurrentFromNumber().catchError((_) => null);
+
           final callInfo = CallInfo(
             id: roomId,
-            phoneNumber: 'Incoming Call',
+            phoneNumber: fetchedFrom ?? 'Incoming Call',
             contactName: 'Unknown Caller',
             timestamp: DateTime.now(),
             type: CallType.incoming,
             status: CallStatus.ringing,
           );
 
-          // Show incoming call overlay
+          // Show incoming call overlay (this will start the ringtone)
           if (mounted) {
             final callProvider = Provider.of<CallProvider>(
               context,
@@ -119,20 +123,35 @@ class _HomeScreenState extends State<HomeScreen> {
               context: context,
               callInfo: callInfo,
               onAnswer: () {
-                callProvider.answerCall();
-                _currentRoomId = null; // Reset after answering
+                // Ringtone will be stopped by CallOverlayManager
+                // Pass roomId so call service can update status correctly
+                callProvider.answerCall(roomId: roomId);
+                // Don't reset roomId here - let it be cleared when call ends
               },
               onDecline: () {
+                // Ringtone will be stopped by CallOverlayManager
                 callProvider.declineCall();
                 _currentRoomId = null; // Reset after declining
               },
             );
           }
+        } else if (roomId != null && roomId == _currentRoomId) {
+          // Same call still active - ringtone should continue playing
+          // CallOverlayManager will handle keeping ringtone playing
+          // No action needed here
         } else if (roomId == null && _currentRoomId != null) {
-          // Call ended or was cleared
+          // Call ended or caller stopped the call - stop ringtone and hide overlay
+          print('Call ended - room ID cleared');
           _currentRoomId = null;
           if (mounted) {
-            CallOverlayManager.hideOverlay();
+            // Clear the call from provider as well
+            final callProvider = Provider.of<CallProvider>(
+              context,
+              listen: false,
+            );
+            callProvider
+                .declineCall(); // This will update call status and clear it
+            CallOverlayManager.hideOverlay(); // This will stop the ringtone
           }
         }
       } catch (e) {
@@ -150,18 +169,40 @@ class _HomeScreenState extends State<HomeScreen> {
     final callProvider = Provider.of<CallProvider>(context, listen: false);
     final currentCall = callProvider.currentCall;
 
-    if (currentCall != null && currentCall.status == CallStatus.ringing) {
-      // Show incoming call overlay
-      CallOverlayManager.showIncomingCall(
-        context: context,
-        callInfo: currentCall,
-        onAnswer: () => callProvider.answerCall(),
-        onDecline: () => callProvider.declineCall(),
-      );
-    } else if (currentCall == null ||
-        currentCall.status != CallStatus.ringing) {
-      // Hide overlay when call ends or is answered
+    if (currentCall == null) {
+      // No call - hide overlay
       CallOverlayManager.hideOverlay();
+      return;
+    }
+
+    // Show appropriate overlay based on call status
+    switch (currentCall.status) {
+      case CallStatus.ringing:
+        // Show incoming call overlay
+        CallOverlayManager.showIncomingCall(
+          context: context,
+          callInfo: currentCall,
+          onAnswer: () => callProvider.answerCall(),
+          onDecline: () => callProvider.declineCall(),
+        );
+        break;
+
+      case CallStatus.answered:
+        // Show ongoing call overlay
+        CallOverlayManager.showOngoingCall(
+          context: context,
+          callInfo: currentCall,
+          onHangup: () => callProvider.declineCall(),
+          // TODO: Add mute/speaker callbacks when implemented
+        );
+        break;
+
+      case CallStatus.declined:
+      case CallStatus.ended:
+      case CallStatus.missed:
+        // Hide overlay when call ends
+        CallOverlayManager.hideOverlay();
+        break;
     }
   }
 
@@ -181,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[900],
       appBar: AppBar(
-        title: const Text('hello'),
+        title: Image.asset('assets/images/logo.png', height: 28),
         backgroundColor: Colors.grey[850],
         elevation: 0,
         actions: [

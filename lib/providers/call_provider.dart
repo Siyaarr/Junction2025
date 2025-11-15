@@ -38,8 +38,8 @@ class CallProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> answerCall() async {
-    await _callService.answerCall();
+  Future<void> answerCall({String? roomId}) async {
+    await _callService.answerCall(roomId: roomId);
   }
 
   Future<void> declineCall() async {

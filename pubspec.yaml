@@ -48,3 +48,4 @@ flutter:
   # Assets for alarm sounds
   assets:
     - assets/sounds/
+    - assets/images/
