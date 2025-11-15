@@ -405,6 +405,43 @@ class BackendService {
     }
   }
 
+  /// Make direct HTTP request to /voice-sdk endpoint
+  /// This will return TwiML XML or whatever the endpoint returns
+  Future<String> makeRequestToVoiceSdk({
+    required String conferenceName,
+    required String action,
+    required String userId,
+  }) async {
+    try {
+      print('=== Making request to /voice-sdk ===');
+      print('Conference name: $conferenceName');
+      print('Action: $action');
+      print('User ID: $userId');
+
+      // Make POST request with form data (as Twilio would send it)
+      final response = await _dio.post(
+        '/voice-sdk',
+        data: {
+          'conference_name': conferenceName,
+          'action': action,
+          'From': 'client:$userId',
+        },
+        options: Options(
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        ),
+      );
+
+      print('Response status: ${response.statusCode}');
+      print('Response data: ${response.data}');
+      print('===============================');
+
+      return response.data.toString();
+    } catch (e) {
+      print('Error making request to /voice-sdk: $e');
+      rethrow;
+    }
+  }
+
   /// Trigger scam warning during active call
   /// Backend will redirect the call to inject a warning message
   Future<bool> triggerScamWarning(

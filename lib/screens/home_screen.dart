@@ -120,8 +120,9 @@ class _HomeScreenState extends State<HomeScreen> {
               callInfo: callInfo,
               onAnswer: () {
                 // Ringtone will be stopped by CallOverlayManager
-                callProvider.answerCall();
-                _currentRoomId = null; // Reset after answering
+                // Pass roomId so call service can update status correctly
+                callProvider.answerCall(roomId: roomId);
+                // Don't reset roomId here - let it be cleared when call ends
               },
               onDecline: () {
                 // Ringtone will be stopped by CallOverlayManager
@@ -139,6 +140,13 @@ class _HomeScreenState extends State<HomeScreen> {
           print('Call ended - room ID cleared');
           _currentRoomId = null;
           if (mounted) {
+            // Clear the call from provider as well
+            final callProvider = Provider.of<CallProvider>(
+              context,
+              listen: false,
+            );
+            callProvider
+                .declineCall(); // This will update call status and clear it
             CallOverlayManager.hideOverlay(); // This will stop the ringtone
           }
         }
