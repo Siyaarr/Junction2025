@@ -1139,6 +1139,30 @@ class TwilioCallService {
     }
   }
 
+  /// Toggle speaker on/off during active call
+  Future<void> toggleSpeaker(bool enable) async {
+    try {
+      print('Toggling speaker: ${enable ? "ON" : "OFF"}');
+      await TwilioVoice.instance.call.toggleSpeaker(enable);
+      print('Speaker toggled successfully');
+    } catch (e) {
+      print('Error toggling speaker: $e');
+      // Don't throw - speaker control failure shouldn't crash the call
+    }
+  }
+
+  /// Mute/unmute microphone during active call
+  Future<void> toggleMute(bool mute) async {
+    try {
+      print('Toggling mute: ${mute ? "MUTED" : "UNMUTED"}');
+      await TwilioVoice.instance.call.toggleMute(mute);
+      print('Mute toggled successfully');
+    } catch (e) {
+      print('Error toggling mute: $e');
+      // Don't throw - mute control failure shouldn't crash the call
+    }
+  }
+
   /// Get current call
   CallInfo? get currentCall => _currentCall;
 

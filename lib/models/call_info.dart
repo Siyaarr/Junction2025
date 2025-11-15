@@ -6,6 +6,8 @@ class CallInfo {
   final CallType type;
   final CallStatus status;
   final bool? isScam;
+  final bool isMuted;
+  final bool isSpeakerOn;
 
   CallInfo({
     required this.id,
@@ -15,6 +17,8 @@ class CallInfo {
     required this.type,
     required this.status,
     this.isScam,
+    this.isMuted = false,
+    this.isSpeakerOn = false,
   });
 
   Map<String, dynamic> toJson() {
@@ -26,6 +30,8 @@ class CallInfo {
       'type': type.toString(),
       'status': status.toString(),
       'isScam': isScam,
+      'isMuted': isMuted,
+      'isSpeakerOn': isSpeakerOn,
     };
   }
 
@@ -44,6 +50,8 @@ class CallInfo {
         orElse: () => CallStatus.ringing,
       ),
       isScam: json['isScam'] as bool?,
+      isMuted: json['isMuted'] as bool? ?? false,
+      isSpeakerOn: json['isSpeakerOn'] as bool? ?? false,
     );
   }
 }
