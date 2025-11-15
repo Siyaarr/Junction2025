@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/settings_service.dart';
+import '../services/alert_service.dart';
 import '../models/call_info.dart';
 import '../widgets/call_overlay_manager.dart';
 import '../providers/call_provider.dart';
@@ -15,10 +17,12 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final SettingsService _settingsService = SettingsService();
+  final AlertService _alertService = AlertService();
   final TextEditingController _phoneController = TextEditingController();
   String? _savedPhoneNumber;
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isTestingRingtone = false;
 
   @override
   void initState() {
@@ -356,6 +360,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
+                            // Test Ringtone Button
+                            OutlinedButton.icon(
+                              onPressed: _isTestingRingtone
+                                  ? null
+                                  : _testRingtone,
+                              icon: _isTestingRingtone
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.orange,
+                                            ),
+                                      ),
+                                    )
+                                  : const Icon(Icons.volume_up),
+                              label: Text(
+                                _isTestingRingtone
+                                    ? 'Playing...'
+                                    : 'Test Ringtone (3s)',
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.orange[300],
+                                side: BorderSide(color: Colors.orange[700]!),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                minimumSize: const Size(double.infinity, 48),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
                             Row(
                               children: [
                                 Expanded(
@@ -402,6 +439,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
     );
+  }
+
+  /// Dev feature: Test ringtone playback
+  Future<void> _testRingtone() async {
+    if (_isTestingRingtone) return;
+
+    setState(() {
+      _isTestingRingtone = true;
+    });
+
+    try {
+      // Start playing ringtone
+      await _alertService.startRingtone();
+
+      // Wait for 3 seconds
+      await Future.delayed(const Duration(seconds: 3));
+
+      // Stop ringtone
+      await _alertService.stopRingtone();
+
+      if (mounted) {
+        _showSnackBar('Ringtone test completed');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Error testing ringtone: $e', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTestingRingtone = false;
+        });
+      }
+    }
   }
 
   /// Dev feature: Show test incoming call overlay

@@ -249,19 +249,34 @@ class TwilioCallService {
   /// Answer incoming Twilio call
   Future<void> answerCall() async {
     try {
+      print('Answering call...');
+
+      // Answer the call using Twilio SDK
       await TwilioVoice.instance.call.answer();
+      print('Call answered successfully');
+
+      // Update call status - the 'connected' event will also fire
+      // but we update immediately for better UX
       if (_currentCall != null && _currentCall!.status == CallStatus.ringing) {
         _handleCallConnected();
       }
     } catch (e) {
       print('Error answering call: $e');
+      rethrow;
     }
   }
 
-  /// Decline incoming Twilio call
+  /// Decline incoming Twilio call (hangup)
   Future<void> declineCall() async {
     try {
+      print('Declining call...');
+
+      // Hang up the call using Twilio SDK
       await TwilioVoice.instance.call.hangUp();
+      print('Call declined successfully');
+
+      // Update call status - the 'callEnded' event will also fire
+      // but we update immediately for better UX
       if (_currentCall != null) {
         // Stop any ongoing sounds
         _alertService.stopRingtone();
@@ -282,6 +297,23 @@ class TwilioCallService {
       }
     } catch (e) {
       print('Error declining call: $e');
+      // Even if hangup fails, update UI state to ensure UI is consistent
+      if (_currentCall != null) {
+        _currentCall = CallInfo(
+          id: _currentCall!.id,
+          phoneNumber: _currentCall!.phoneNumber,
+          contactName: _currentCall!.contactName,
+          timestamp: _currentCall!.timestamp,
+          type: _currentCall!.type,
+          status: CallStatus.declined,
+          isScam: _currentCall!.isScam,
+        );
+        _callController.add(_currentCall!);
+        _stopScamCheckTimer();
+        _alertService.stopAlert();
+        _currentCall = null;
+      }
+      // Don't rethrow - we've handled the UI state, let the event handler deal with it
     }
   }
 

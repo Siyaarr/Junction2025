@@ -20,6 +20,8 @@ class AlertService {
     if (_audioPlayer == null && _audioPlayerAvailable) {
       try {
         _audioPlayer = AudioPlayer();
+        // Configure audio player to use device's current audio output
+        _audioPlayer!.setPlayerMode(PlayerMode.mediaPlayer);
       } catch (e) {
         print('AudioPlayer not available: $e');
         _audioPlayerAvailable = false;
@@ -32,6 +34,9 @@ class AlertService {
     if (_ringtonePlayer == null && _audioPlayerAvailable) {
       try {
         _ringtonePlayer = AudioPlayer();
+        // Configure audio player to use device's current audio output
+        // This ensures ringtone plays through speaker/earpiece/headphones as configured
+        _ringtonePlayer!.setPlayerMode(PlayerMode.mediaPlayer);
       } catch (e) {
         print('Ringtone AudioPlayer not available: $e');
         _audioPlayerAvailable = false;

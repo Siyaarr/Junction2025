@@ -342,6 +342,30 @@ class BackendService {
         throw Exception(
           'Connection timeout. Please check your internet connection and ensure the backend server is running at $fullUrl',
         );
+      } else if (e.response?.statusCode == 521) {
+        // Cloudflare error: Origin server is down
+        throw Exception(
+          'Backend server is down (Cloudflare Error 521).\n\n'
+          'The backend server at $baseUrl is not responding.\n\n'
+          'Please check:\n'
+          '1. Backend server is running and accessible\n'
+          '2. Server is not crashed or overloaded\n'
+          '3. Firewall/security groups allow connections\n'
+          '4. Server logs for errors\n\n'
+          'This is a server-side issue, not a client issue.',
+        );
+      } else if (e.response?.statusCode == 502 ||
+          e.response?.statusCode == 503) {
+        // Cloudflare/Bad Gateway errors
+        throw Exception(
+          'Backend server error (${e.response?.statusCode}).\n\n'
+          'The backend server is experiencing issues.\n\n'
+          'Please check:\n'
+          '1. Backend server is running\n'
+          '2. Server is not overloaded\n'
+          '3. Check server logs for errors\n\n'
+          'Error: ${e.response?.data}',
+        );
       } else if (e.response?.statusCode == 404) {
         throw Exception(
           'Access token endpoint not found. Please ensure the backend API is deployed at $fullUrl',
@@ -354,6 +378,13 @@ class BackendService {
       } else if (e.response?.statusCode == 302) {
         throw Exception(
           'Backend returned redirect. Please check the API URL configuration.',
+        );
+      } else if (e.response != null) {
+        // Handle other HTTP error status codes
+        throw Exception(
+          'Backend returned error ${e.response?.statusCode}.\n\n'
+          'Response: ${e.response?.data}\n\n'
+          'Please check backend server logs for details.',
         );
       }
       print('Error getting Twilio access token: $e');
