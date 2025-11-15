@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/settings_service.dart';
+import '../models/call_info.dart';
+import '../widgets/call_overlay_manager.dart';
+import '../providers/call_provider.dart';
+import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -310,9 +314,133 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ),
+
+                  // Dev Section (only in debug mode)
+                  if (const bool.fromEnvironment('dart.vm.product') ==
+                      false) ...[
+                    const SizedBox(height: 32),
+                    const Divider(color: Colors.grey),
+                    const SizedBox(height: 16),
+                    Card(
+                      color: Colors.grey[800],
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.bug_report,
+                                  color: Colors.orange[300],
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Developer Tools',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Test the incoming call screen without waiting for a real call.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _showTestCall(isScam: false),
+                                    icon: const Icon(Icons.phone),
+                                    label: const Text('Test Normal Call'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.blue[300],
+                                      side: BorderSide(
+                                        color: Colors.blue[700]!,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _showTestCall(isScam: true),
+                                    icon: const Icon(Icons.warning),
+                                    label: const Text('Test Scam Call'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red[300],
+                                      side: BorderSide(color: Colors.red[700]!),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
+    );
+  }
+
+  /// Dev feature: Show test incoming call overlay
+  void _showTestCall({required bool isScam}) {
+    final testCallInfo = CallInfo(
+      id: 'test-call-${DateTime.now().millisecondsSinceEpoch}',
+      phoneNumber: isScam ? '+1-800-SCAMMER' : '+1-555-0123',
+      contactName: isScam ? 'Suspicious Caller' : 'John Doe',
+      timestamp: DateTime.now(),
+      type: CallType.incoming,
+      status: CallStatus.ringing,
+      isScam: isScam,
+    );
+
+    final callProvider = Provider.of<CallProvider>(context, listen: false);
+
+    CallOverlayManager.showIncomingCall(
+      context: context,
+      callInfo: testCallInfo,
+      onAnswer: () {
+        callProvider.answerCall();
+        CallOverlayManager.hideOverlay();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Test call answered'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      },
+      onDecline: () {
+        callProvider.declineCall();
+        CallOverlayManager.hideOverlay();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Test call declined'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      },
     );
   }
 }
