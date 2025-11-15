@@ -54,6 +54,7 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
   late final AnimationController _aiSpeakingController;
   AnimationController? _endCountdownController; // created when entering choice
   ScamFlowStage _scamStage = ScamFlowStage.none;
+  bool _securityContactAdded = false; // Track if security contact has been added
 
   @override
   void initState() {
@@ -187,10 +188,23 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
       })
       ..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
-          widget.onHangup();
+          // Only auto-hangup if security contact hasn't been added
+          if (!_securityContactAdded) {
+            widget.onHangup();
+          }
         }
       });
     _endCountdownController!.forward();
+  }
+
+  void _onSecurityContactAdded() {
+    setState(() {
+      _securityContactAdded = true;
+    });
+    // Stop and dispose the countdown controller
+    _endCountdownController?.stop();
+    _endCountdownController?.dispose();
+    _endCountdownController = null;
   }
 
   @override
@@ -289,7 +303,45 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                   ),
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+
+                // Participant count indicator (shown when security contact is added)
+                if (_securityContactAdded)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green[700]?.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.green[500]!,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.people,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '3 on call',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.95),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                const SizedBox(height: 8),
 
                 // Call duration or Paused badge
                 _isOnHold
@@ -496,36 +548,143 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                             ),
                           ),
                         ] else if (_scamStage == ScamFlowStage.choice) ...[
-                          const Text(
-                            'Do you want to add your security contact to this call?',
-                            style: TextStyle(color: Colors.white, fontSize: 14),
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                widget.onCallSafetyContact?.call();
-                              },
-                              icon: const Icon(Icons.person_add),
-                              label: const Text('Add Security Contact'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue[700],
-                                foregroundColor: Colors.white,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
+                          if (!_securityContactAdded) ...[
+                            const Text(
+                              'Do you want to add your security contact to this call?',
+                              style: TextStyle(color: Colors.white, fontSize: 14),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  _onSecurityContactAdded();
+                                  widget.onCallSafetyContact?.call();
+                                },
+                                icon: const Icon(Icons.person_add),
+                                label: const Text('Add Security Contact'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue[700],
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          // End call with left→right progress fill
-                          SizedBox(
-                            width: double.infinity,
-                            child: _EndButtonWithProgress(
-                              onPressed: widget.onHangup,
-                              controller: _endCountdownController,
+                            const SizedBox(height: 8),
+                            // End call with left→right progress fill (DISABLED after clicking Add)
+                            SizedBox(
+                              width: double.infinity,
+                              child: _EndButtonWithProgress(
+                                onPressed: widget.onHangup,
+                                controller: _endCountdownController,
+                              ),
                             ),
-                          ),
+                          ] else ...[
+                            // DIFFERENT LAYOUT: Show that security contact has been added
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.green[900]?.withOpacity(0.4),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.green[600]!,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green[700],
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.check,
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Security Contact Added',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            SizedBox(height: 4),
+                                            Text(
+                                              'Your trusted person is now on the call',
+                                              style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  // Participants indicator
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(
+                                          Icons.people,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '3 people on call',
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.9),
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            // Manual end call button (NO COUNTDOWN ANIMATION)
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: widget.onHangup,
+                                icon: const Icon(Icons.call_end, color: Colors.white),
+                                label: const Text('End Call'),
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: Colors.red[700],
+                                  foregroundColor: Colors.white,
+                                  side: BorderSide(color: Colors.red[900]!),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                          ],
                           const Spacer(),
                         ] else ...[
                           const Text(

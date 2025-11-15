@@ -25,7 +25,9 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _currentRoomId;
   final BackendService _backendService = BackendService();
   List<Map<String, dynamic>> _reminders = [];
+  List<Map<String, dynamic>> _conversations = [];
   final Set<String> _completedReminders = {}; // Track completed reminders by unique ID
+  final Set<String> _seenConversationTimestamps = {}; // Track seen conversations to avoid duplicates
 
   @override
   void initState() {
@@ -160,8 +162,9 @@ class _HomeScreenState extends State<HomeScreen> {
             callProvider
                 .declineCall(); // This will update call status and clear it
             CallOverlayManager.hideOverlay(); // This will stop the ringtone
-            // Refetch reminders after call ends
+            // Refetch reminders and conversations after call ends
             _fetchReminders();
+            _fetchConversations();
           }
         }
       } catch (e) {
@@ -181,14 +184,16 @@ class _HomeScreenState extends State<HomeScreen> {
     
     // Fetch immediately
     _fetchReminders();
+    _fetchConversations();
 
-    // Poll every 30 seconds for reminders
+    // Poll every 30 seconds for reminders and conversations
     _reminderPollTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
       if (!mounted) {
         timer.cancel();
         return;
       }
       _fetchReminders();
+      _fetchConversations();
     });
   }
 
@@ -207,6 +212,28 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       print('Error fetching reminders: $e');
+    }
+  }
+
+  Future<void> _fetchConversations() async {
+    try {
+      final conversations = await _backendService.getConversations();
+      print('Fetched ${conversations.length} conversations from backend');
+      if (mounted) {
+        setState(() {
+          // Only add conversations we haven't seen before based on timestamp
+          for (final conv in conversations) {
+            final timestamp = conv['timestamp'] as String?;
+            if (timestamp != null) {
+              _seenConversationTimestamps.add(timestamp);
+            }
+          }
+          _conversations = conversations;
+          print('Updated UI with ${_conversations.length} conversations');
+        });
+      }
+    } catch (e) {
+      print('Error fetching conversations: $e');
     }
   }
 
@@ -544,6 +571,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
 
                     const SizedBox(height: 24),
+
+                    // Call log section
+                    if (_conversations.isNotEmpty) _buildCallLogSection(),
+
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
@@ -802,6 +834,291 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallLogSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.call,
+                    color: Colors.blue,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Call Log',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_conversations.length}',
+                    style: const TextStyle(
+                      color: Colors.blue,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Divider
+          Divider(color: Colors.grey[800], height: 1),
+          
+          // Call list
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(12),
+            itemCount: _conversations.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final conversation = _conversations[index];
+              return _buildCallLogCard(conversation);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallLogCard(Map<String, dynamic> conversation) {
+    final fromNumber = conversation['from_number'] as String? ?? 'Unknown';
+    final isContact = conversation['is_contact'] as bool? ?? false;
+    final scamAlerted = conversation['scam_alerted'] as bool? ?? false;
+    final timestampStr = conversation['timestamp'] as String? ?? '';
+    final keyPoints = (conversation['key_points'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [];
+    
+    final scamAnalysis = conversation['scam_analysis'] as Map<String, dynamic>?;
+    final isScam = scamAnalysis?['is_scam'] as bool? ?? false;
+    final scamType = scamAnalysis?['scam_type'] as String?;
+    final confidence = scamAnalysis?['confidence'] as double?;
+    
+    final timestamp = DateTime.tryParse(timestampStr);
+    final now = DateTime.now();
+    
+    String formattedTime = '';
+    if (timestamp != null) {
+      final hour = timestamp.hour.toString().padLeft(2, '0');
+      final minute = timestamp.minute.toString().padLeft(2, '0');
+      final month = timestamp.month.toString().padLeft(2, '0');
+      final day = timestamp.day.toString().padLeft(2, '0');
+      
+      final isToday = timestamp.year == now.year &&
+          timestamp.month == now.month &&
+          timestamp.day == now.day;
+      
+      if (isToday) {
+        formattedTime = 'Today at $hour:$minute';
+      } else if (timestamp.difference(now).inDays == -1) {
+        formattedTime = 'Yesterday at $hour:$minute';
+      } else {
+        formattedTime = '$day.$month at $hour:$minute';
+      }
+    }
+    
+    // Determine border color based on scam status
+    Color borderColor = Colors.blue.withOpacity(0.3);
+    Color statusColor = Colors.blue;
+    IconData statusIcon = Icons.phone_in_talk;
+    String statusLabel = 'Call';
+    
+    if (isScam || scamAlerted) {
+      borderColor = Colors.red.withOpacity(0.5);
+      statusColor = Colors.red;
+      statusIcon = Icons.warning;
+      statusLabel = 'SCAM ALERT';
+    } else if (isContact) {
+      borderColor = Colors.green.withOpacity(0.3);
+      statusColor = Colors.green;
+      statusIcon = Icons.verified_user;
+      statusLabel = 'Trusted Contact';
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[800],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row with phone number and status
+          Row(
+            children: [
+              Icon(statusIcon, color: statusColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fromNumber,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (formattedTime.isNotEmpty)
+                      Text(
+                        formattedTime,
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          // Scam details if applicable
+          if (isScam && scamType != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.withOpacity(0.3), width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.security, color: Colors.red, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        scamType,
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (confidence != null) ...[
+                        const Spacer(),
+                        Text(
+                          '${(confidence * 100).toStringAsFixed(0)}% confidence',
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (scamAnalysis?['reasoning'] != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      scamAnalysis!['reasoning'] as String,
+                      style: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          
+          // Key points
+          if (keyPoints.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Key Points:',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            ...keyPoints.map((point) => Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '• ',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 13,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          point,
+                          style: TextStyle(
+                            color: Colors.grey[300],
+                            fontSize: 13,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
         ],
       ),
     );
