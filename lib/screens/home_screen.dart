@@ -26,8 +26,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final BackendService _backendService = BackendService();
   List<Map<String, dynamic>> _reminders = [];
   List<Map<String, dynamic>> _conversations = [];
-  final Set<String> _completedReminders = {}; // Track completed reminders by unique ID
-  final Set<String> _seenConversationTimestamps = {}; // Track seen conversations to avoid duplicates
+  final Set<String> _completedReminders =
+      {}; // Track completed reminders by unique ID
+  final Set<String> _seenConversationTimestamps =
+      {}; // Track seen conversations to avoid duplicates
 
   @override
   void initState() {
@@ -67,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Start polling /room endpoint every second for incoming calls (foreground)
       _startRoomPolling();
-      
+
       // Start polling for reminders
       _startReminderPolling();
 
@@ -109,13 +111,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Create CallInfo for the incoming call
           // Try to fetch the latest caller number from the data endpoint
-          final fetchedFrom =
-              await _backendService.getCurrentFromNumber().catchError((_) => null);
+          final fetchedFrom = await _backendService
+              .getCurrentFromNumber()
+              .catchError((_) => null);
 
           final callInfo = CallInfo(
             id: roomId,
             phoneNumber: fetchedFrom ?? 'Incoming Call',
-            contactName: fetchedFrom, // Use phone number as contact name if no name available
+            contactName:
+                fetchedFrom, // Use phone number as contact name if no name available
             timestamp: DateTime.now(),
             type: CallType.incoming,
             status: CallStatus.ringing,
@@ -181,13 +185,15 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startReminderPolling() {
     // Stop any existing timer
     _stopReminderPolling();
-    
+
     // Fetch immediately
     _fetchReminders();
     _fetchConversations();
 
     // Poll every 30 seconds for reminders and conversations
-    _reminderPollTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
+    _reminderPollTimer = Timer.periodic(const Duration(seconds: 30), (
+      timer,
+    ) async {
       if (!mounted) {
         timer.cancel();
         return;
@@ -502,14 +508,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
 
-                    // Reminders section
-                    if (_reminders.isNotEmpty) _buildRemindersSection(),
-
-                    const SizedBox(height: 24),
-
-                    // Info section with animations
+                    // "You're Protected" section at the top
                     Padding(
-                      padding: const EdgeInsets.all(24.0),
+                      padding: const EdgeInsets.fromLTRB(
+                        24.0,
+                        64.0,
+                        24.0,
+                        24.0,
+                      ),
                       child: Column(
                         children: [
                           AnimatedPhoneIcon(
@@ -517,7 +523,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: Colors.blue,
                             isActive: _isInitialized,
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(
+                            height: 24,
+                          ), // Increased padding between icon and text
                           TweenAnimationBuilder<double>(
                             tween: Tween(begin: 0.0, end: 1.0),
                             duration: const Duration(milliseconds: 800),
@@ -570,7 +578,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32), // Good gap before reminders
+                    // Reminders section
+                    if (_reminders.isNotEmpty) _buildRemindersSection(),
+
+                    const SizedBox(height: 16),
 
                     // Call log section
                     if (_conversations.isNotEmpty) _buildCallLogSection(),
@@ -625,7 +637,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.blue.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
@@ -642,10 +657,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          
+
           // Divider
           Divider(color: Colors.grey[800], height: 1),
-          
+
           // Reminder list
           ListView.separated(
             shrinkWrap: true,
@@ -668,24 +683,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final timeStr = reminder['time'] as String? ?? '';
     final fromNumber = reminder['from_number'] as String? ?? '';
     final isContact = reminder['is_contact'] as bool? ?? false;
-    
+
     // Create unique ID for this reminder
     final reminderId = '$text-$timeStr';
     final isCompleted = _completedReminders.contains(reminderId);
-    
+
     final reminderTime = DateTime.tryParse(timeStr);
     final now = DateTime.now();
     final isPast = reminderTime != null && reminderTime.isBefore(now);
-    final isToday = reminderTime != null && 
+    final isToday =
+        reminderTime != null &&
         reminderTime.year == now.year &&
         reminderTime.month == now.month &&
         reminderTime.day == now.day;
-    
+
     String formattedTime = '';
     if (reminderTime != null) {
       final hour = reminderTime.hour.toString().padLeft(2, '0');
       final minute = reminderTime.minute.toString().padLeft(2, '0');
-      
+
       if (isToday) {
         formattedTime = 'Today at $hour:$minute';
       } else if (reminderTime.difference(now).inDays == 1) {
@@ -696,7 +712,7 @@ class _HomeScreenState extends State<HomeScreen> {
         formattedTime = '$day.$month at $hour:$minute';
       }
     }
-    
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -707,9 +723,11 @@ class _HomeScreenState extends State<HomeScreen> {
         border: Border.all(
           color: isCompleted
               ? Colors.green.withOpacity(0.5)
-              : (isPast 
-                  ? Colors.grey[700]!
-                  : (isToday ? Colors.orange.withOpacity(0.5) : Colors.blue.withOpacity(0.3))),
+              : (isPast
+                    ? Colors.grey[700]!
+                    : (isToday
+                          ? Colors.orange.withOpacity(0.5)
+                          : Colors.blue.withOpacity(0.3))),
           width: 1,
         ),
       ),
@@ -744,9 +762,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(width: 12),
-          
+
           // Content
           Expanded(
             child: Column(
@@ -759,9 +777,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       isPast ? Icons.history : Icons.schedule,
                       color: isCompleted
                           ? Colors.green
-                          : (isPast 
-                              ? Colors.grey[500]
-                              : (isToday ? Colors.orange : Colors.blue)),
+                          : (isPast
+                                ? Colors.grey[500]
+                                : (isToday ? Colors.orange : Colors.blue)),
                       size: 16,
                     ),
                     const SizedBox(width: 6),
@@ -779,7 +797,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     if (isContact)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.green.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(8),
@@ -787,11 +808,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.person,
-                              color: Colors.green,
-                              size: 10,
-                            ),
+                            Icon(Icons.person, color: Colors.green, size: 10),
                             SizedBox(width: 2),
                             Text(
                               'Contact',
@@ -806,29 +823,28 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 8),
-                
+
                 // Reminder text
                 Text(
                   text,
                   style: TextStyle(
-                    color: isCompleted ? Colors.grey[500] : (isPast ? Colors.grey[400] : Colors.white),
+                    color: isCompleted
+                        ? Colors.grey[500]
+                        : (isPast ? Colors.grey[400] : Colors.white),
                     fontSize: 14,
                     height: 1.3,
                     decoration: isCompleted ? TextDecoration.lineThrough : null,
                   ),
                 ),
-                
+
                 // From number (if not a contact)
                 if (fromNumber.isNotEmpty && !isContact) ...[
                   const SizedBox(height: 6),
                   Text(
                     'From: $fromNumber',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 11,
-                    ),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 11),
                   ),
                 ],
               ],
@@ -861,11 +877,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: Colors.blue.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
-                    Icons.call,
-                    color: Colors.blue,
-                    size: 20,
-                  ),
+                  child: const Icon(Icons.call, color: Colors.blue, size: 20),
                 ),
                 const SizedBox(width: 12),
                 const Text(
@@ -878,7 +890,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.blue.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
@@ -895,10 +910,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          
+
           // Divider
           Divider(color: Colors.grey[800], height: 1),
-          
+
           // Call list
           ListView.separated(
             shrinkWrap: true,
@@ -921,30 +936,32 @@ class _HomeScreenState extends State<HomeScreen> {
     final isContact = conversation['is_contact'] as bool? ?? false;
     final scamAlerted = conversation['scam_alerted'] as bool? ?? false;
     final timestampStr = conversation['timestamp'] as String? ?? '';
-    final keyPoints = (conversation['key_points'] as List<dynamic>?)
+    final keyPoints =
+        (conversation['key_points'] as List<dynamic>?)
             ?.map((e) => e.toString())
             .toList() ??
         [];
-    
+
     final scamAnalysis = conversation['scam_analysis'] as Map<String, dynamic>?;
     final isScam = scamAnalysis?['is_scam'] as bool? ?? false;
     final scamType = scamAnalysis?['scam_type'] as String?;
     final confidence = scamAnalysis?['confidence'] as double?;
-    
+
     final timestamp = DateTime.tryParse(timestampStr);
     final now = DateTime.now();
-    
+
     String formattedTime = '';
     if (timestamp != null) {
       final hour = timestamp.hour.toString().padLeft(2, '0');
       final minute = timestamp.minute.toString().padLeft(2, '0');
       final month = timestamp.month.toString().padLeft(2, '0');
       final day = timestamp.day.toString().padLeft(2, '0');
-      
-      final isToday = timestamp.year == now.year &&
+
+      final isToday =
+          timestamp.year == now.year &&
           timestamp.month == now.month &&
           timestamp.day == now.day;
-      
+
       if (isToday) {
         formattedTime = 'Today at $hour:$minute';
       } else if (timestamp.difference(now).inDays == -1) {
@@ -953,13 +970,13 @@ class _HomeScreenState extends State<HomeScreen> {
         formattedTime = '$day.$month at $hour:$minute';
       }
     }
-    
+
     // Determine border color based on scam status
     Color borderColor = Colors.blue.withOpacity(0.3);
     Color statusColor = Colors.blue;
     IconData statusIcon = Icons.phone_in_talk;
     String statusLabel = 'Call';
-    
+
     if (isScam || scamAlerted) {
       borderColor = Colors.red.withOpacity(0.5);
       statusColor = Colors.red;
@@ -971,7 +988,7 @@ class _HomeScreenState extends State<HomeScreen> {
       statusIcon = Icons.verified_user;
       statusLabel = 'Trusted Contact';
     }
-    
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1002,10 +1019,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (formattedTime.isNotEmpty)
                       Text(
                         formattedTime,
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 12,
-                        ),
+                        style: TextStyle(color: Colors.grey[500], fontSize: 12),
                       ),
                   ],
                 ),
@@ -1027,7 +1041,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          
+
           // Scam details if applicable
           if (isScam && scamType != null) ...[
             const SizedBox(height: 8),
@@ -1036,7 +1050,10 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 color: Colors.red.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.withOpacity(0.3), width: 1),
+                border: Border.all(
+                  color: Colors.red.withOpacity(0.3),
+                  width: 1,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1080,7 +1097,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
-          
+
           // Key points
           if (keyPoints.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -1093,31 +1110,30 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            ...keyPoints.map((point) => Padding(
-                  padding: const EdgeInsets.only(left: 8, bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '• ',
+            ...keyPoints.map(
+              (point) => Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '• ',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                    ),
+                    Expanded(
+                      child: Text(
+                        point,
                         style: TextStyle(
-                          color: Colors.grey[500],
+                          color: Colors.grey[300],
                           fontSize: 13,
+                          height: 1.3,
                         ),
                       ),
-                      Expanded(
-                        child: Text(
-                          point,
-                          style: TextStyle(
-                            color: Colors.grey[300],
-                            fontSize: 13,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ],
       ),
