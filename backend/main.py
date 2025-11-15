@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request, send_file
 from flask_sock import Sock
+from twilio.rest import Client
 from twilio.twiml.voice_response import VoiceResponse, Start
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
@@ -26,10 +27,13 @@ domain = os.getenv('DOMAIN')
 app = Flask(__name__)
 sock = Sock(app)
 
+client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
+
 data_layer = DataLayer()
 transcriber = DiarizationTranscriber()
 detector = ScamDetector()
 summarizer = ConversationSummarizer()
+
 
 def handle_chunk():
     """Save current buffer as WAV file run analysis."""
@@ -115,7 +119,7 @@ def wait():
 
 @app.route("/voice", methods=['POST'])
 def voice():
-    """Respond to incoming phone calls with a brief message."""
+    """Handle incoming phone calls."""
 
     resp = VoiceResponse()
 
@@ -135,6 +139,7 @@ def voice():
     print(f"Conference name: {conference_name}")
 
     # Start streaming
+    # NOTE: Start streaming only if unknown caller.
     start = Start()
     start.stream(url=f'wss://{domain}/stream')
     resp.append(start)
@@ -161,7 +166,7 @@ def voice_sdk():
     action = request.form.get('action')
     from_identity = request.form.get('From')  # Will be "client:user_id"
     
-    print(f"📱 Voice SDK call from {from_identity}")
+    print(f"📱 Voice SDK call from {from_identity}", conference_name, action)
     
     if action == 'join_conference' and conference_name:
         dial = resp.dial()
@@ -242,6 +247,20 @@ def stream(ws):
         elif data['event'] == 'stop':
             handle_call_end()
             break
+
+
+@app.route('/add', methods=["GET"])
+def add_safe_contact():
+    participant = client.conferences(data_layer.current_conversation.conference_name) \
+        .participants \
+        .create(
+            to=os.getenv('SAFE_CONTACT_PHONE_NUMBER'),
+            from_=os.getenv('TWILIO_PHONE_NUMBER'),
+            # early_media=True,
+            end_conference_on_exit=False
+        )
+
+    return f"Participant SID: {participant.sid}"
 
 
 def handle_call_end():
