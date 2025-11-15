@@ -31,8 +31,7 @@ class Reminder():
 
 
 class Conversation():
-    def __init__(self, sid: str, conference_name: str, from_number: str, is_contact: bool):
-        self.sid = sid
+    def __init__(self, conference_name: str, from_number: str, is_contact: bool):
         self.conference_name = conference_name
         self.from_number = from_number
         self.is_contact = is_contact
@@ -40,16 +39,19 @@ class Conversation():
         self.key_points: List[str] = []
         self.reminders: List[Reminder] = []
         self.scam_analysis: Optional[ScamAnalysis] = None
+        self.scam_alerted = False
+        self.safe_contact_added = False
 
     def to_dict(self) -> Dict[str, object]:
         return {
-            "sid": self.sid,
             "conference_name": self.conference_name,
             "from_number": self.from_number,
             "is_contact": self.is_contact,
             "key_points": self.key_points,
             "reminders": [reminder.to_dict() for reminder in self.reminders],
             "scam_analysis": self.scam_analysis.model_dump() if self.scam_analysis else None,
+            "scam_alerted": self.scam_alerted,
+            "safe_contact_added": self.safe_contact_added,
         }
 
 

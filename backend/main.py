@@ -74,6 +74,14 @@ def handle_chunk():
     print(f"Risks: {scam_result.risk_factors}")
     print(f"Reasoning: {scam_result.reasoning}")
 
+    # If the conversation is a scam and hasn't been alerted yet, make an announcement.
+    if scam_result.is_scam and not data_layer.current_conversation.scam_alerted:
+        # This will be attempted multiple times if it fails.
+        try:
+            make_announcement()
+        except:
+            pass
+
 
 def timer_worker():
     """Save chunks every CHUNK_SIZE seconds."""
@@ -132,7 +140,7 @@ def voice():
     from_number = request.form.get('From')
     conference_name = f"room-{call_sid}"
     
-    conversation = Conversation(call_sid, conference_name, from_number, is_contact(from_number))
+    conversation = Conversation(conference_name, from_number, is_contact(from_number))
     data_layer.conversations[call_sid] = conversation
     data_layer.current_conversation_sid = call_sid
 
@@ -156,7 +164,7 @@ def voice():
     return str(resp)
 
 
-@app.route("/voice-sdk", methods=['POST'])
+@app.route("/voice-sdk", methods=['POST', "GET"])
 def voice_sdk():
     """Handle Voice SDK calls from mobile app"""
     resp = VoiceResponse()
@@ -222,8 +230,6 @@ def recording():
     print(f"Recording URL: {recording_url}")
     print(f"Transcription: {transcription}")
     
-    # Here you could save to database, send email, etc.
-    
     return '', 200
 
 
@@ -249,18 +255,48 @@ def stream(ws):
             break
 
 
-@app.route('/add', methods=["GET"])
+@app.route('/add', methods=["GET", "POST"])
 def add_safe_contact():
-    participant = client.conferences(data_layer.current_conversation.conference_name) \
+    conferences = client.conferences.list(
+        friendly_name=data_layer.current_conversation.conference_name
+    )
+    print(conferences)
+
+    participant = client.conferences.get(conferences[0].sid) \
         .participants \
         .create(
             to=os.getenv('SAFE_CONTACT_PHONE_NUMBER'),
             from_=os.getenv('TWILIO_PHONE_NUMBER'),
-            # early_media=True,
             end_conference_on_exit=False
         )
 
+    data_layer.current_conversation.safe_contact_added = True
+
     return f"Participant SID: {participant.sid}"
+
+
+@app.route('/announce', methods=['POST'])
+def announce():
+    response = VoiceResponse()
+    response.say(f"Attention everyone: This conversation has been flagged as a scam. {data_layer.current_conversation.scam_analysis.reasoning} Matthew, you can hang up now or invite a safe contact to join the conversation.")
+    return str(response)
+
+
+@app.route('/make-announcement', methods=["GET"])
+def make_announcement():
+    conferences = client.conferences.list(
+        friendly_name=data_layer.current_conversation.conference_name
+    )
+    print(conferences)
+
+    client.conferences.get(conferences[0].sid).update(
+        announce_url=f'https://{domain}/announce',
+        announce_method='POST',
+    )
+
+    data_layer.current_conversation.scam_alerted = True
+
+    return f"Announcement made"
 
 
 def handle_call_end():
