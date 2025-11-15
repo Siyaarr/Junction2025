@@ -7,10 +7,10 @@ class BackendService {
   final String baseUrl;
 
   BackendService({String? baseUrl})
-    : baseUrl = baseUrl ?? 'https://junction.timohartikainen.fi/api',
+    : baseUrl = baseUrl ?? 'https://junction.timohartikainen.fi',
       _dio = Dio(
         BaseOptions(
-          baseUrl: baseUrl ?? 'https://junction.timohartikainen.fi/api',
+          baseUrl: baseUrl ?? 'https://junction.timohartikainen.fi',
           connectTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(seconds: 10),
           followRedirects: true,
@@ -20,6 +20,42 @@ class BackendService {
           },
         ),
       );
+
+  /// Poll /room endpoint to check for incoming calls
+  /// Returns room ID if a call is incoming, null if no call
+  /// This should be polled every second after SDK initialization
+  Future<String?> checkForIncomingCall() async {
+    try {
+      final response = await _dio.get('/room');
+      if (response.statusCode == 200) {
+        // If response is empty or null, no call is incoming
+        if (response.data == null || response.data == '') {
+          return null;
+        }
+
+        // Response should be the room ID as a string (e.g., "room-CA02d5f736f5b39f8b66e3a1ac4a3b5bf0")
+        if (response.data is String) {
+          final roomId = response.data as String;
+          return roomId.isEmpty ? null : roomId;
+        } else if (response.data is Map) {
+          // If it's JSON, try to get the 'id' or 'roomId' field
+          final data = response.data as Map<String, dynamic>;
+          final roomId =
+              data['id'] as String? ??
+              data['roomId'] as String? ??
+              data['room_id'] as String? ??
+              '';
+          return roomId.isEmpty ? null : roomId;
+        }
+        return null;
+      }
+      // 404 or other status means no call
+      return null;
+    } catch (e) {
+      // If error (like 404), no call is incoming
+      return null;
+    }
+  }
 
   /// Analyze a call to check if it's a scam
   /// This should be called when a call starts
@@ -78,7 +114,7 @@ class BackendService {
   /// This should be called when app starts or token expires
   Future<String> getTwilioAccessToken() async {
     try {
-      final response = await _dio.post('/twilio/access-token');
+      final response = await _dio.post('/access-token');
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>;
         return data['accessToken'] as String;
@@ -89,7 +125,7 @@ class BackendService {
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
         throw Exception(
-          'Twilio access token endpoint not found. Please ensure the backend API is deployed.',
+          'Access token endpoint not found. Please ensure the backend API is deployed.',
         );
       } else if (e.response?.statusCode == 302) {
         throw Exception(

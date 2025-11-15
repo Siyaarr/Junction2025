@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:junction_flutter_1/models/call_info.dart';
 import 'package:provider/provider.dart';
 import '../providers/call_provider.dart';
 import '../widgets/call_overlay_manager.dart';
+import '../widgets/animated_phone_icon.dart';
 import '../services/backend_service.dart';
+import '../services/background_polling_service.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,6 +20,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isInitialized = false;
   bool _isInitializing = false;
   String? _initError;
+  Timer? _roomPollTimer;
+  String? _currentRoomId;
+  final BackendService _backendService = BackendService();
 
   @override
   void initState() {
@@ -34,10 +41,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final callProvider = Provider.of<CallProvider>(context, listen: false);
-      final backendService = BackendService();
 
       // Get Twilio access token from backend
-      final accessToken = await backendService.getTwilioAccessToken();
+      final accessToken = await _backendService.getTwilioAccessToken();
+      print('Access token obtained, initializing SDK...');
 
       // Initialize Twilio with access token (no device token needed)
       await callProvider.initializeTwilio(
@@ -52,6 +59,18 @@ class _HomeScreenState extends State<HomeScreen> {
         _isInitialized = true;
         _isInitializing = false;
       });
+
+      // Start polling /room endpoint every second for incoming calls (foreground)
+      _startRoomPolling();
+
+      // Also start background polling (runs when app is in background)
+      // This may fail if plugin isn't registered - that's okay, foreground polling still works
+      final bgPollingStarted = await BackgroundPollingService.startPolling();
+      if (!bgPollingStarted) {
+        print(
+          'Note: Background polling not started. Foreground polling is still active.',
+        );
+      }
     } catch (e) {
       setState(() {
         _isInitializing = false;
@@ -59,6 +78,72 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       print('Error initializing app: $e');
     }
+  }
+
+  void _startRoomPolling() {
+    // Stop any existing timer
+    _stopRoomPolling();
+
+    // Poll every second for incoming calls
+    _roomPollTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      try {
+        final roomId = await _backendService.checkForIncomingCall();
+
+        if (roomId != null && roomId != _currentRoomId) {
+          // New incoming call detected
+          _currentRoomId = roomId;
+          print('Incoming call detected with room ID: $roomId');
+
+          // Create CallInfo for the incoming call
+          final callInfo = CallInfo(
+            id: roomId,
+            phoneNumber: 'Incoming Call',
+            contactName: 'Unknown Caller',
+            timestamp: DateTime.now(),
+            type: CallType.incoming,
+            status: CallStatus.ringing,
+          );
+
+          // Show incoming call overlay
+          if (mounted) {
+            final callProvider = Provider.of<CallProvider>(
+              context,
+              listen: false,
+            );
+            CallOverlayManager.showIncomingCall(
+              context: context,
+              callInfo: callInfo,
+              onAnswer: () {
+                callProvider.answerCall();
+                _currentRoomId = null; // Reset after answering
+              },
+              onDecline: () {
+                callProvider.declineCall();
+                _currentRoomId = null; // Reset after declining
+              },
+            );
+          }
+        } else if (roomId == null && _currentRoomId != null) {
+          // Call ended or was cleared
+          _currentRoomId = null;
+          if (mounted) {
+            CallOverlayManager.hideOverlay();
+          }
+        }
+      } catch (e) {
+        print('Error polling for incoming calls: $e');
+      }
+    });
+  }
+
+  void _stopRoomPolling() {
+    _roomPollTimer?.cancel();
+    _roomPollTimer = null;
   }
 
   void _handleCallUpdate() {
@@ -82,6 +167,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _stopRoomPolling();
+    // Note: We keep background polling running even when screen is disposed
+    // This ensures calls can be detected when app is in background
     final callProvider = Provider.of<CallProvider>(context, listen: false);
     callProvider.removeListener(_handleCallUpdate);
     CallOverlayManager.hideOverlay();
@@ -93,9 +181,46 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[900],
       appBar: AppBar(
-        title: const Text('Anti-Scam Protection'),
+        title: const Text('hello'),
         backgroundColor: Colors.grey[850],
         elevation: 0,
+        actions: [
+          // Connection status indicator
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _isInitialized
+                        ? Colors.green
+                        : (_initError != null ? Colors.red : Colors.orange),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _isInitialized
+                      ? 'Connected'
+                      : (_initError != null ? 'Disconnected' : 'Connecting...'),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[300]),
+                ),
+              ],
+            ),
+          ),
+          // Settings button
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
+            tooltip: 'Settings',
+          ),
+        ],
       ),
       body: _buildMainContent(),
     );
@@ -201,64 +326,6 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: Column(
                 children: [
-                  // Status card
-                  Container(
-                    margin: const EdgeInsets.all(16),
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: _isInitialized
-                                ? Colors.green
-                                : (_initError != null
-                                      ? Colors.red
-                                      : Colors.orange),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _isInitialized
-                                    ? 'Protection Active'
-                                    : (_initError != null
-                                          ? 'Not Connected'
-                                          : 'Initializing...'),
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _isInitialized
-                                    ? 'AI is monitoring your calls for suspicious activity'
-                                    : (_initError != null
-                                          ? 'Connection issue. Please try again.'
-                                          : 'Setting up protection...'),
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[400],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
                   // Scam alert indicator
                   if (callProvider.isScamAlertActive)
                     Container(
@@ -288,36 +355,64 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   const Spacer(),
 
-                  // Info section
+                  // Info section with animations
                   Padding(
                     padding: const EdgeInsets.all(24.0),
                     child: Column(
                       children: [
-                        const Icon(
-                          Icons.phone_in_talk,
+                        AnimatedPhoneIcon(
                           size: 64,
                           color: Colors.blue,
+                          isActive: _isInitialized,
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'You\'re Protected',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 800),
+                          curve: Curves.easeOut,
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 20 * (1 - value)),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'You\'re Protected',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          'Our AI system analyzes incoming calls in real-time to detect potential scams. '
-                          'If a suspicious call is detected, you\'ll receive an immediate alert and warning.',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[400],
-                            height: 1.4,
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 1000),
+                          curve: Curves.easeOut,
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 20 * (1 - value)),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Text(
+                            'Our AI system analyzes incoming calls in real-time to detect potential scams. '
+                            'If a suspicious call is detected, you\'ll receive an immediate alert and warning.',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[400],
+                              height: 1.4,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),

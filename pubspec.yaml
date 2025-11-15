@@ -33,6 +33,9 @@ dependencies:
   # Utilities
   shared_preferences: ^2.2.3
   uuid: ^4.3.3
+  
+  # Background tasks
+  workmanager: ^0.5.2
 
 dev_dependencies:
   flutter_test:
