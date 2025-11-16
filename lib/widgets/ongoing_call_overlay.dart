@@ -41,7 +41,6 @@ class OngoingCallOverlay extends StatefulWidget {
 
 class _OngoingCallOverlayState extends State<OngoingCallOverlay>
     with TickerProviderStateMixin {
-
   DateTime? _callStartTime;
   Timer? _durationTimer;
   Duration _callDuration = Duration.zero;
@@ -54,7 +53,8 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
   late final AnimationController _aiSpeakingController;
   AnimationController? _endCountdownController; // created when entering choice
   ScamFlowStage _scamStage = ScamFlowStage.none;
-  bool _securityContactAdded = false; // Track if security contact has been added
+  bool _securityContactAdded =
+      false; // Track if security contact has been added
 
   @override
   void initState() {
@@ -70,10 +70,10 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
       duration: const Duration(milliseconds: 380),
       vsync: this,
     );
-    _panelSlide =
-        Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(
-      CurvedAnimation(parent: _panelController, curve: Curves.easeOutCubic),
-    );
+    _panelSlide = Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _panelController, curve: Curves.easeOutCubic),
+        );
 
     _aiSpeakingController = AnimationController(
       duration: const Duration(milliseconds: 1200),
@@ -168,7 +168,10 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
       _scamStage = ScamFlowStage.aiSpeaking;
     });
     Future.delayed(const Duration(seconds: 10), () {
-      if (!mounted || !_scamPauseActive || _scamStage != ScamFlowStage.aiSpeaking) return;
+      if (!mounted ||
+          !_scamPauseActive ||
+          _scamStage != ScamFlowStage.aiSpeaking)
+        return;
       _enterChoiceStage();
     });
   }
@@ -179,21 +182,19 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
     });
     // 10s auto-end countdown with smooth left-to-right animation on End button
     _endCountdownController?.dispose();
-    _endCountdownController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 10),
-    )
-      ..addListener(() {
-        if (mounted) setState(() {});
-      })
-      ..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          // Only auto-hangup if security contact hasn't been added
-          if (!_securityContactAdded) {
-            widget.onHangup();
-          }
-        }
-      });
+    _endCountdownController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 10))
+          ..addListener(() {
+            if (mounted) setState(() {});
+          })
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed) {
+              // Only auto-hangup if security contact hasn't been added
+              if (!_securityContactAdded) {
+                widget.onHangup();
+              }
+            }
+          });
     _endCountdownController!.forward();
   }
 
@@ -271,193 +272,194 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                     ),
 
                   // Caller avatar/icon
-                Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.1),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
-                      width: 2,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.person,
-                    size: 60,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Caller info (phone number as primary display)
-                Text(
-                  widget.callInfo.phoneNumber.isNotEmpty
-                      ? widget.callInfo.phoneNumber
-                      : (widget.callInfo.contactName ?? 'Loading...'),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Participant count indicator (shown when security contact is added)
-                if (_securityContactAdded)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
+                    width: 120,
+                    height: 120,
                     decoration: BoxDecoration(
-                      color: Colors.green[700]?.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(20),
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.1),
                       border: Border.all(
-                        color: Colors.green[500]!,
-                        width: 1.5,
+                        color: Colors.white.withOpacity(0.3),
+                        width: 2,
                       ),
                     ),
-                    child: Row(
+                    child: Icon(
+                      Icons.person,
+                      size: 60,
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Caller info (phone number as primary display)
+                  Text(
+                    widget.callInfo.phoneNumber.isNotEmpty
+                        ? widget.callInfo.phoneNumber
+                        : (widget.callInfo.contactName ?? 'Loading...'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Participant count indicator (shown when security contact is added)
+                  if (_securityContactAdded)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green[700]?.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.green[500]!,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.people,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '3 on call',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.95),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 8),
+
+                  // Call duration or Paused badge
+                  _isOnHold
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange[800],
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Text(
+                            'Paused',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )
+                      : Text(
+                          _formatDuration(_callDuration),
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 20,
+                            fontWeight: FontWeight.w500,
+                            fontFeatures: [const FontFeature.tabularFigures()],
+                          ),
+                        ),
+
+                  const Spacer(),
+
+                  // Call controls
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 28,
+                    ),
+                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.people,
-                          color: Colors.white,
-                          size: 18,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            // Mute button
+                            _CallControlButton(
+                              icon: _isMuted ? Icons.mic_off : Icons.mic,
+                              label: 'Mute',
+                              color: _isMuted ? Colors.red : Colors.grey[700]!,
+                              onTap: () {
+                                HapticFeedback.mediumImpact();
+                                setState(() => _isMuted = !_isMuted);
+                                widget.onMute?.call();
+                              },
+                            ),
+
+                            // Speaker button
+                            _CallControlButton(
+                              icon: _isSpeakerOn
+                                  ? Icons.volume_up
+                                  : Icons.volume_down,
+                              label: 'Speaker',
+                              color: _isSpeakerOn
+                                  ? Colors.green
+                                  : Colors.grey[700]!,
+                              onTap: () {
+                                HapticFeedback.mediumImpact();
+                                setState(() => _isSpeakerOn = !_isSpeakerOn);
+                                widget.onSpeaker?.call();
+                              },
+                            ),
+
+                            // Hold/Resume button
+                            _CallControlButton(
+                              icon: _isOnHold ? Icons.play_arrow : Icons.pause,
+                              label: _isOnHold ? 'Resume' : 'Hold',
+                              color: _isOnHold
+                                  ? Colors.blueAccent
+                                  : Colors.grey[700]!,
+                              onTap: () {
+                                HapticFeedback.mediumImpact();
+                                setState(() {
+                                  _isOnHold = !_isOnHold;
+                                  if (_isOnHold) {
+                                    _scamPauseActive =
+                                        _scamPauseActive ||
+                                        widget.callInfo.isScam == true;
+                                    widget.onHold?.call();
+                                  } else {
+                                    widget.onResume?.call();
+                                  }
+                                });
+                              },
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '3 on call',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.95),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+
+                        const SizedBox(height: 20),
+
+                        // Hangup button (separate row below)
+                        Align(
+                          alignment: Alignment.center,
+                          child: _CallControlButton(
+                            icon: Icons.call_end,
+                            label: 'Hang Up',
+                            color: Colors.red,
+                            onTap: () {
+                              HapticFeedback.heavyImpact();
+                              widget.onHangup();
+                            },
                           ),
                         ),
                       ],
                     ),
                   ),
-
-                const SizedBox(height: 8),
-
-                // Call duration or Paused badge
-                _isOnHold
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange[800],
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Text(
-                          'Paused',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      )
-                    : Text(
-                        _formatDuration(_callDuration),
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 20,
-                          fontWeight: FontWeight.w500,
-                          fontFeatures: [const FontFeature.tabularFigures()],
-                        ),
-                      ),
-
-                const Spacer(),
-
-                // Call controls
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 28,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          // Mute button
-                          _CallControlButton(
-                            icon: _isMuted ? Icons.mic_off : Icons.mic,
-                            label: 'Mute',
-                            color: _isMuted ? Colors.red : Colors.grey[700]!,
-                            onTap: () {
-                              HapticFeedback.mediumImpact();
-                              setState(() => _isMuted = !_isMuted);
-                              widget.onMute?.call();
-                            },
-                          ),
-
-                          // Speaker button
-                          _CallControlButton(
-                            icon: _isSpeakerOn
-                                ? Icons.volume_up
-                                : Icons.volume_down,
-                            label: 'Speaker',
-                            color: _isSpeakerOn
-                                ? Colors.green
-                                : Colors.grey[700]!,
-                            onTap: () {
-                              HapticFeedback.mediumImpact();
-                              setState(() => _isSpeakerOn = !_isSpeakerOn);
-                              widget.onSpeaker?.call();
-                            },
-                          ),
-
-                          // Hold/Resume button
-                          _CallControlButton(
-                            icon: _isOnHold ? Icons.play_arrow : Icons.pause,
-                            label: _isOnHold ? 'Resume' : 'Hold',
-                            color: _isOnHold
-                                ? Colors.blueAccent
-                                : Colors.grey[700]!,
-                            onTap: () {
-                              HapticFeedback.mediumImpact();
-                              setState(() {
-                                _isOnHold = !_isOnHold;
-                                if (_isOnHold) {
-                                  _scamPauseActive = _scamPauseActive ||
-                                      widget.callInfo.isScam == true;
-                                  widget.onHold?.call();
-                                } else {
-                                  widget.onResume?.call();
-                                }
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Hangup button (separate row below)
-                      Align(
-                        alignment: Alignment.center,
-                        child: _CallControlButton(
-                          icon: Icons.call_end,
-                          label: 'Hang Up',
-                          color: Colors.red,
-                          onTap: () {
-                            HapticFeedback.heavyImpact();
-                            widget.onHangup();
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+                ],
+              ),
             ),
 
             // Scam side panel / pause assistant
@@ -551,7 +553,10 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                           if (!_securityContactAdded) ...[
                             const Text(
                               'Do you want to add your security contact to this call?',
-                              style: TextStyle(color: Colors.white, fontSize: 14),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
                             ),
                             const SizedBox(height: 16),
                             SizedBox(
@@ -566,8 +571,9 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.blue[700],
                                   foregroundColor: Colors.white,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                 ),
                               ),
                             ),
@@ -611,7 +617,8 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                                       const SizedBox(width: 12),
                                       const Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               'Security Contact Added',
@@ -646,7 +653,8 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         const Icon(
                                           Icons.people,
@@ -657,7 +665,9 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                                         Text(
                                           '3 people on call',
                                           style: TextStyle(
-                                            color: Colors.white.withOpacity(0.9),
+                                            color: Colors.white.withOpacity(
+                                              0.9,
+                                            ),
                                             fontSize: 14,
                                             fontWeight: FontWeight.w500,
                                           ),
@@ -674,13 +684,18 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                               width: double.infinity,
                               child: OutlinedButton.icon(
                                 onPressed: widget.onHangup,
-                                icon: const Icon(Icons.call_end, color: Colors.white),
+                                icon: const Icon(
+                                  Icons.call_end,
+                                  color: Colors.white,
+                                ),
                                 label: const Text('End Call'),
                                 style: OutlinedButton.styleFrom(
                                   backgroundColor: Colors.red[700],
                                   foregroundColor: Colors.white,
                                   side: BorderSide(color: Colors.red[900]!),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                 ),
                               ),
                             ),
@@ -689,10 +704,7 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
                         ] else ...[
                           const Text(
                             'Scam suspected. We paused the call.',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
+                            style: TextStyle(color: Colors.white, fontSize: 14),
                           ),
                           const Spacer(),
                         ],
@@ -704,43 +716,44 @@ class _OngoingCallOverlayState extends State<OngoingCallOverlay>
             ),
 
             // Dev-only toggles overlay (top-left) to simulate mode changes
-            if (const bool.fromEnvironment('dart.vm.product') == false)
-              Align(
-                alignment: Alignment.topLeft,
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      OutlinedButton(
-                        onPressed: _simulateScamAlert,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red[300],
-                          side: BorderSide(color: Colors.red[700]!),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                        ),
-                        child: const Text('Simulate Scam'),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton(
-                        onPressed: _simulateNormal,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.green[300],
-                          side: BorderSide(color: Colors.green[700]!),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                        ),
-                        child: const Text('Simulate Normal'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            // Disabled for now
+            // if (const bool.fromEnvironment('dart.vm.product') == false)
+            //   Align(
+            //     alignment: Alignment.topLeft,
+            //     child: Padding(
+            //       padding: const EdgeInsets.all(8.0),
+            //       child: Row(
+            //         mainAxisSize: MainAxisSize.min,
+            //         children: [
+            //           OutlinedButton(
+            //             onPressed: _simulateScamAlert,
+            //             style: OutlinedButton.styleFrom(
+            //               foregroundColor: Colors.red[300],
+            //               side: BorderSide(color: Colors.red[700]!),
+            //               padding: const EdgeInsets.symmetric(
+            //                 horizontal: 10,
+            //                 vertical: 6,
+            //               ),
+            //             ),
+            //             child: const Text('Simulate Scam'),
+            //           ),
+            //           const SizedBox(width: 8),
+            //           OutlinedButton(
+            //             onPressed: _simulateNormal,
+            //             style: OutlinedButton.styleFrom(
+            //               foregroundColor: Colors.green[300],
+            //               side: BorderSide(color: Colors.green[700]!),
+            //               padding: const EdgeInsets.symmetric(
+            //                 horizontal: 10,
+            //                 vertical: 6,
+            //               ),
+            //             ),
+            //             child: const Text('Simulate Normal'),
+            //           ),
+            //         ],
+            //       ),
+            //     ),
+            //   ),
           ],
         ),
       ),
@@ -927,9 +940,7 @@ class _EndButtonWithProgress extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: FractionallySizedBox(
                     widthFactor: progress,
-                    child: Container(
-                      color: Colors.white.withOpacity(0.12),
-                    ),
+                    child: Container(color: Colors.white.withOpacity(0.12)),
                   ),
                 ),
               ),

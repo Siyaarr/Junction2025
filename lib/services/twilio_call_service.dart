@@ -179,9 +179,9 @@ class TwilioCallService {
 
       print('\n${"=" * 60}');
       print('🔑 SETTING TWILIO TOKENS');
-      print('${"=" * 60}');
+      print("=" * 60);
       print(
-        'Access Token (first 50 chars): ${accessToken.length > 50 ? accessToken.substring(0, 50) + "..." : accessToken}',
+        'Access Token (first 50 chars): ${accessToken.length > 50 ? "${accessToken.substring(0, 50)}..." : accessToken}',
       );
       print('Access Token length: ${accessToken.length}');
       print('Device Token: ${deviceToken ?? "null (using empty string)"}');
@@ -217,14 +217,14 @@ class TwilioCallService {
       // Listen to Twilio call events
       print('\n${"=" * 60}');
       print('👂 SETTING UP EVENT LISTENER');
-      print('${"=" * 60}');
+      print("=" * 60);
       print('Listening to: TwilioVoice.instance.callEventsListener');
       _callEventsSubscription = TwilioVoice.instance.callEventsListener.listen(
         _handleTwilioEvent,
         onError: (error) {
           print('\n${"=" * 60}');
           print('❌ TWILIO EVENT LISTENER ERROR');
-          print('${"=" * 60}');
+          print("=" * 60);
           print('Error: $error');
           print('Error type: ${error.runtimeType}');
           print('${"=" * 60}\n');
@@ -243,7 +243,7 @@ class TwilioCallService {
   void _handleTwilioEvent(dynamic event) {
     print('\n${"=" * 60}');
     print('📡 TWILIO EVENT RECEIVED');
-    print('${"=" * 60}');
+    print("=" * 60);
     print('Timestamp: ${DateTime.now().toIso8601String()}');
     print('Event: $event');
     print('Event type: ${event.runtimeType}');
@@ -780,7 +780,7 @@ class TwilioCallService {
 
       print('\n${"=" * 60}');
       print('📞 PLACING TWILIO CALL TO JOIN CONFERENCE');
-      print('${"=" * 60}');
+      print("=" * 60);
       print('Conference Name: $conferenceName');
       print('User Identity: $userId');
       print('From: $userId (will be sent as "client:$userId")');
@@ -795,7 +795,7 @@ class TwilioCallService {
         // PRE-FLIGHT CHECKS
         print('\n${"=" * 60}');
         print('🔍 PRE-FLIGHT CHECKS');
-        print('${"=" * 60}');
+        print("=" * 60);
 
         // CRITICAL: Ensure phone account is registered before placing call
         print('📱 Checking phone account registration...');
@@ -930,7 +930,7 @@ class TwilioCallService {
 
         print('\n${"=" * 60}');
         print('✅ place() CALL COMPLETED');
-        print('${"=" * 60}');
+        print("=" * 60);
         print('Return value: $placeResult');
         print('Return type: ${placeResult.runtimeType}');
 
@@ -954,9 +954,9 @@ class TwilioCallService {
         print('${"=" * 60}\n');
 
         // POST-PLACEMENT CHECKS
-        print('${"=" * 60}');
+        print("=" * 60);
         print('🔍 POST-PLACEMENT CHECKS');
-        print('${"=" * 60}');
+        print("=" * 60);
 
         // Wait a moment for call to initialize
         await Future.delayed(const Duration(milliseconds: 500));
@@ -989,9 +989,9 @@ class TwilioCallService {
 
         print('${"=" * 60}\n');
 
-        print('${"=" * 60}');
+        print("=" * 60);
         print('✅ TWILIO CALL PLACED SUCCESSFULLY');
-        print('${"=" * 60}');
+        print("=" * 60);
         print('Method: place()');
         print('From: $userId (SDK will send as "client:$userId")');
         print('To: $conferenceName');
@@ -1049,12 +1049,12 @@ class TwilioCallService {
       } catch (e, stackTrace) {
         print('\n${"=" * 60}');
         print('❌ ERROR PLACING TWILIO CALL');
-        print('${"=" * 60}');
+        print("=" * 60);
         print('Method: place()');
         print('Error: $e');
         print('Error Type: ${e.runtimeType}');
         print('Stack Trace: $stackTrace');
-        print('${"=" * 60}');
+        print("=" * 60);
 
         // Analyze error type
         final errorStr = e.toString().toLowerCase();
