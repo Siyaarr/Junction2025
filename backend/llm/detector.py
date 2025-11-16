@@ -1,7 +1,3 @@
-"""
-Minimal Phone Call Scam Detector with Structured Output
-"""
-
 from typing import List, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -21,8 +17,6 @@ class ScamAnalysis(BaseModel):
 
 
 class ScamDetector:
-    """Minimal scam detection using LangChain with structured output"""
-    
     def __init__(self, model: str = "gpt-4o", temperature: float = 0.1):
         self.llm = ChatOpenAI(model=model, temperature=temperature)
         
@@ -30,7 +24,7 @@ class ScamDetector:
             ("system", """You are a scam detection expert. Analyze phone transcripts for scam indicators.
 
             Common scam signs:
-            - Urgency ("act now", "limited time")  
+            - Urgency ("act now", "limited time")
             - Threats (arrest, account closure)
             - Requests for personal info (SSN, passwords)
             - Unusual payments (gift cards, wire transfer)

@@ -4,6 +4,7 @@ import os
 
 load_dotenv()
 
+
 class DiarizationTranscriber:
     def __init__(self):
         self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
