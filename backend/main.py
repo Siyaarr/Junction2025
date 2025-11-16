@@ -278,7 +278,7 @@ def add_safe_contact():
 @app.route('/announce', methods=['POST'])
 def announce():
     response = VoiceResponse()
-    response.say(f"Attention everyone: This conversation has been flagged as a scam. {data_layer.current_conversation.scam_analysis.reasoning} Matthew, you can hang up now or invite a safe contact to join the conversation.")
+    response.say(f"Attention: This conversation has been flagged as a scam. {data_layer.current_conversation.scam_analysis.reasoning} Matthew, you can hang up now or invite a safe contact to join the conversation.")
     return str(response)
 
 
