@@ -119,7 +119,7 @@ class DataLayer():
                 ],
                 "reminders": [
                     {"time": "2025-11-14 18:00", "text": "Emma picking up prescription"},
-                    {"time": "2025-11-15 11:50", "text": "Prepare for Emma's visit"},
+                    {"time": "2025-11-21 11:50", "text": "Prepare for Emma's visit"},
                 ],
                 "scam_analysis": {
                     "is_scam": False,
@@ -243,7 +243,7 @@ class DataLayer():
                     "No personal information requested over the phone",
                 ],
                 "reminders": [
-                    {"time": "2025-11-15 19:00", "text": "Expect courier with replacement card"},
+                    {"time": "2025-11-17 19:00", "text": "Expect courier with replacement card"},
                 ],
                 "scam_analysis": {
                     "is_scam": False,
