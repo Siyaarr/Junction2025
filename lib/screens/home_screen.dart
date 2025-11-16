@@ -524,8 +524,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             isActive: _isInitialized,
                           ),
                           const SizedBox(
-                            height: 24,
-                          ), // Increased padding between icon and text
+                            height: 40,
+                          ), // Increased padding between icon and text to prevent overlap
                           TweenAnimationBuilder<double>(
                             tween: Tween(begin: 0.0, end: 1.0),
                             duration: const Duration(milliseconds: 800),
